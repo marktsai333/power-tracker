@@ -1,38 +1,75 @@
-# 電費追蹤
+# power-tracker
 
-租屋處電費一度 6 元，貴得有感覺，但電表只給你一個累計數字，看不出到底花去哪。
-所以寫了這個：抄表的時候輸入日期跟度數，其他它算。
+電費追蹤 PWA。輸入電表累計讀數，自動換算計費週期內的用電量、費用與趨勢。
 
-https://marktsai333.github.io/power-tracker/
+**Live:** https://marktsai333.github.io/power-tracker/
 
-用 Safari 開，分享 → 加入主畫面，就跟一般 App 一樣，離線也能開。
+單一 HTML 檔，無相依套件、無建置流程。資料儲存於瀏覽器 `localStorage`，不經過任何伺服器。
 
-## 它會告訴你什麼
+## 功能
 
-每個月 15 號結算，所以首頁直接是「這期到目前為止用了多少、照這個速度到 15 號會被收多少」。
-已經抄到的部分是實算，剩下的天數用最近的用電速度推估。
+- 計費週期以結算日界定（預設每月 15 號），跨週期的抄表區間按時間比例分攤
+- 本期預估帳單：已抄錄區間為實算，剩餘天數以近 30 天平均速率推估
+- 每日平均用電趨勢圖，折線 / 柱狀可切換，含全期平均基準線
+- 歷史帳單：各期用量、費用與環比變化
+- 電價、結算日可設定
+- JSON 匯出 / 匯入，CSV 匯出
+- 深淺色主題、離線可用、iOS 啟動畫面、應用程式內版本更新
 
-下面是每日平均用電的趨勢圖（折線或柱狀），還有歷次帳單，可以看出哪個月開始變貴。
+## 安裝（iOS）
 
-電價和結算日都能改。
+以 Safari 開啟 Live 網址 → 分享 → 加入主畫面。之後以獨立視窗啟動，離線可用。
 
-## 資料
+## 專案結構
 
-存在手機瀏覽器的 localStorage，不上傳任何地方。
-換手機或清掉 Safari 網站資料就沒了，設定裡有匯出 JSON 跟 CSV。
+| 檔案 | 說明 |
+| --- | --- |
+| `index.html` | 應用程式全部內容（markup、style、logic） |
+| `sw.js` | Service worker，cache-first 搭配背景更新 |
+| `manifest.webmanifest` | PWA manifest |
+| `icon-*.png`、`splash/` | 圖示與 iOS 啟動畫面，由指令碼產生 |
+| `make_icons.py` | 產生應用程式圖示 |
+| `make_splash.py` | 產生啟動畫面並輸出對應的 `<link>` 標籤，需要 Pillow |
+| `HACKING.md` | 實作說明與修改指引 |
+
+## 資料格式
+
+```json
+{
+  "price": 6,
+  "settleDay": 15,
+  "chartMode": "line",
+  "readings": [
+    { "d": "2026-08-15", "k": 5429.9 }
+  ]
+}
+```
+
+`d` 為抄表日期（`YYYY-MM-DD`），`k` 為電表累計讀數（度）。儲存於 `localStorage` 鍵值 `powerTracker.v1`，匯出格式與此相同。
+
+## 計算方式
+
+電表讀數為累計值，所有指標皆由相鄰兩筆讀數的差推導：
+
+```
+intervals()    N 筆讀數 → N-1 段區間，各含 days / used / perDay
+windowUsage()  任意時間窗內的用量，跨越邊界的區間依時間比例分攤
+cycles()       依結算日切出各計費週期，套用 windowUsage() 求該期用量
+```
+
+用量按時間比例分攤，因此抄表日不需對齊結算日。讀數低於前一筆（換表或輸入錯誤）的區間會被標記並排除於統計之外；資料未完整涵蓋首尾的週期不計入歷史帳單。
 
 ## 開發
 
-單一 HTML 檔，沒有相依套件也沒有建置步驟。本機看：
-
-```
+```bash
 python3 -m http.server 8731
 ```
 
-改完 push 上去就是新版，但**版本號要改兩個地方**：`index.html` 的 `VERSION` 和
-`sw.js` 的 `CACHE`。service worker 靠 cache 名稱判斷有沒有新版，不改的話手機會一直用舊的。
+## 發佈
 
-其他細節寫在 `HACKING.md`。
+推送至 `main` 後由 GitHub Pages 自動部署。**每次發版須同步更新兩處版本號**：
 
-圖示和啟動畫面是程式產生的，改了圖形就重跑 `make_icons.py` / `make_splash.py`。
-後者需要 Pillow，並且會印出要貼回 `<head>` 的 `<link>` 標籤。
+- `index.html` 的 `VERSION`
+- `sw.js` 的 `CACHE`
+
+Service worker 以 cache 名稱判斷版本，未更新則用戶端不會取得新版。應用程式內「設定與資料 → 檢查更新」可立即拉取並重新載入。
