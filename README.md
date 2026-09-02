@@ -1,60 +1,38 @@
-# ⚡ 電費追蹤
+# 電費追蹤
 
-一個記錄電表度數、看用電趨勢與預估電費的小工具。純前端 PWA，加到 iPhone 主畫面後就跟 App 一樣。
+租屋處電費一度 6 元，貴得有感覺，但電表只給你一個累計數字，看不出到底花去哪。
+所以寫了這個：抄表的時候輸入日期跟度數，其他它算。
 
-## 功能
+https://marktsai333.github.io/power-tracker/
 
-- 輸入「日期 + 電表累計度數」，自動算出區間用電、每日平均、電費
-- **預估月費**：以最近 30 天的實際用量推估，並和前 30 天比較漲跌
-- 每日平均用電趨勢圖，可切換**折線 / 柱狀**（點一下看該期詳情），含全期平均參考線
-- 電價可調（預設 6 元/度）
-- 匯出 / 匯入 JSON 備份，匯出 CSV
-- 深淺色模式、離線可用
-- 換表或輸入錯誤（度數變低）會標記出來，且不會污染統計
+用 Safari 開，分享 → 加入主畫面，就跟一般 App 一樣，離線也能開。
 
-## 檔案
+## 它會告訴你什麼
 
-| 檔案 | 用途 |
-|---|---|
-| `index.html` | 整個 App（HTML + CSS + JS，無外部相依） |
-| `sw.js` | Service worker，負責離線快取 |
-| `manifest.webmanifest` | PWA 設定（名稱、圖示、standalone 顯示） |
-| `icon-180/192/512.png` | App 圖示 |
-| `make_icons.py` | 重新產生圖示（純標準函式庫，無需 pip install） |
+每個月 15 號結算，所以首頁直接是「這期到目前為止用了多少、照這個速度到 15 號會被收多少」。
+已經抄到的部分是實算，剩下的天數用最近的用電速度推估。
 
-## 裝到 iPhone
+下面是每日平均用電的趨勢圖（折線或柱狀），還有歷次帳單，可以看出哪個月開始變貴。
 
-PWA 需要用 **https 網址**（或 localhost）才能加到主畫面並離線運作，直接用 Files App 開 `index.html` 是不行的。所以要先把這個資料夾丟到任何靜態網頁空間，例如 GitHub Pages：
+電價和結算日都能改。
 
-```bash
-cd ~/power-tracker && git init && git add . && git commit -m "電費追蹤"
+## 資料
+
+存在手機瀏覽器的 localStorage，不上傳任何地方。
+換手機或清掉 Safari 網站資料就沒了，設定裡有匯出 JSON 跟 CSV。
+
+## 開發
+
+單一 HTML 檔，沒有相依套件也沒有建置步驟。本機看：
+
+```
+python3 -m http.server 8731
 ```
 
-接著在 GitHub 建一個 repo，然後：
+改完 push 上去就是新版，但**版本號要改兩個地方**：`index.html` 的 `VERSION` 和
+`sw.js` 的 `CACHE`。service worker 靠 cache 名稱判斷有沒有新版，不改的話手機會一直用舊的。
 
-```bash
-git remote add origin https://github.com/<你的帳號>/power-tracker.git && git branch -M main && git push -u origin main
-```
+其他細節寫在 `HACKING.md`。
 
-到 repo 的 **Settings → Pages → Source: Deploy from a branch → main / (root)**，等一兩分鐘就會有網址：
-`https://<你的帳號>.github.io/power-tracker/`
-
-然後在 iPhone 上：
-
-1. 用 **Safari**（一定要 Safari，Chrome 不行）打開那個網址
-2. 點下方的分享鈕 → **加入主畫面**
-3. 主畫面就會出現「電費」圖示，點開是全螢幕、沒有網址列，離線也能用
-
-## 本機預覽
-
-```bash
-python3 -m http.server 8731 --directory ~/power-tracker
-```
-
-開 http://localhost:8731
-
-## 注意事項
-
-- **資料只存在該裝置的瀏覽器裡**（localStorage）。手機和電腦不會同步。清除 Safari 網站資料會一併刪除，建議偶爾用「設定與資料 → 匯出 JSON」備份。
-- 改了 `index.html` 之後，因為 service worker 是快取優先，第一次開還是舊版、**重新整理第二次**才會看到新版。要強制更新可以把 `sw.js` 裡的 `CACHE` 版本號加一。
-- 「預估月費」是用最近 30 天的實際用量 × 30 天 × 電價推估，不含基本費或其他分攤費用。
+圖示和啟動畫面是程式產生的，改了圖形就重跑 `make_icons.py` / `make_splash.py`。
+後者需要 Pillow，並且會印出要貼回 `<head>` 的 `<link>` 標籤。

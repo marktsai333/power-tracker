@@ -2,6 +2,22 @@
 
 給未來的自己看的。完整原理見下方「運作原理」。
 
+## 發新版的步驟（照做，不然手機上不會更新）
+
+改完程式後，**同時**改這兩個地方，版本號要一致：
+
+1. `index.html` 的 `const VERSION = "1.1.0"`
+2. `sw.js` 的 `const CACHE = "power-tracker-v1.1.0"`
+
+改 CACHE 名稱是關鍵——service worker 靠它判斷有沒有新版，名稱一變就會重抓所有檔案、刪掉舊快取。
+兩邊沒同步的話，App 裡顯示的版本會跟實際跑的程式對不上。
+
+推上去之後，手機打開 App →「設定與資料 → 檢查更新」，會自動抓新版並重新載入。
+（不按也會更新，只是要開第二次才生效。）
+
+改了圖示或 App 名稱，要重跑 `python3 make_splash.py`，它會重新產生 `splash/` 並印出要貼進
+`index.html` `<head>` 的那 24 行 `<link>` 標籤。
+
 ## 開發流程
 
 ```bash
@@ -17,13 +33,16 @@ cd ~/power-tracker && git add -A && git commit -m "說明改了什麼" && git pu
 ```
 
 約 1 分鐘 GitHub Pages 更新。手機上要**重新整理第二次**才看到新版（service worker 快取優先）。
-想一推就生效，把 `sw.js` 的 `CACHE = "power-tracker-v1"` 版本號 +1，舊快取會整個作廢。
+想一推就生效，把上面那兩個版本號 +1，舊快取會整個作廢。
 
 ## 常見修改對照表
 
 | 想改的東西 | 位置 |
 |---|---|
-| 電價預設值 | `load()` 裡的 `: 6` |
+| 電價 / 結算日預設值 | `load()` 裡的 `: 6` 和 `: 15` |
+| 結算週期算法 | `boundary()` / `cycleOf()` / `cycles()` |
+| 本期預估帳單 | `renderSummary()` 的 “current billing cycle” 段 |
+| 歷史帳單卡片 | `renderBills()` |
 | 顏色 / 字級 / 間距 | 檔頭 `<style>`。顏色都是 CSS 變數（`--series-1` 等），改一處全站套用 |
 | 上方卡片顯示的數字 | `renderSummary()` |
 | 圖表長相 | `renderChart()`。折線 / 柱狀兩種畫法在同一個 `if (mode === "bar")` 分支裡 |
@@ -54,11 +73,12 @@ cd ~/power-tracker && git add -A && git commit -m "說明改了什麼" && git pu
 ```
         load()  ←── localStorage        開 App 時讀一次
           ↓
-        state   { price, readings[] }
+        state   { price, settleDay, chartMode, readings[] }
           ↓
       renderAll()
           ├── renderSummary()   → 上方卡片
-          ├── renderChart()     → SVG 長條圖
+          ├── renderChart()     → SVG 折線 / 長條圖
+          ├── renderBills()     → 歷史帳單
           └── renderList()      → 下方清單
 ```
 
@@ -71,7 +91,8 @@ cd ~/power-tracker && git add -A && git commit -m "說明改了什麼" && git pu
 卡片、每根柱子、清單每一行，全部從這個陣列長出來。
 
 **`windowUsage()`** — 算「最近 30 天」時區間可能被界線切一半，它按比例分攤，
-讓預估月費不會因為抄表間隔不規則而亂跳。
+讓預估金額不會因為抄表間隔不規則而亂跳。結算週期（15 號到 15 號）也靠它切帳，
+所以抄表日不必剛好落在 15 號。
 
 **`sw.js`** — 攔截所有檔案請求，策略是「先給快取的、背景偷抓新的」。
 所以離線可用，代價是新版要開第二次才生效。
