@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>電費追蹤</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="電費">
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<style>
+:root {
+  color-scheme: light;
+  --surface-1:      #fcfcfb;
+  --page:           #f9f9f7;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted:     #898781;
+  --gridline:       #e1e0d9;
+  --baseline:       #c3c2b7;
+  --border:         rgba(11,11,11,0.10);
+  --series-1:       #2a78d6;
+  --series-1-wash:  rgba(42,120,214,0.10);
+  --good:           #006300;
+  --critical:       #d03b3b;
+  --warning:        #fab219;
+  --field:          #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page:           #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --series-1:       #3987e5;
+    --series-1-wash:  rgba(57,135,229,0.14);
+    --good:           #0ca30c;
+    --critical:       #d03b3b;
+    --warning:        #fab219;
+    --field:          #232322;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-1:      #1a1a19;
+  --page:           #0d0d0d;
+  --text-primary:   #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted:     #898781;
+  --gridline:       #2c2c2a;
+  --baseline:       #383835;
+  --border:         rgba(255,255,255,0.10);
+  --series-1:       #3987e5;
+  --series-1-wash:  rgba(57,135,229,0.14);
+  --good:           #0ca30c;
+  --critical:       #d03b3b;
+  --warning:        #fab219;
+  --field:          #232322;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+  background: var(--page);
+  color: var(--text-primary);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.wrap { max-width: 560px; margin: 0 auto; padding: 12px 16px 56px; }
+
+header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 2px 14px;
+}
+header h1 { font-size: 17px; font-weight: 650; margin: 0; letter-spacing: .01em; flex: 1; }
+.iconbtn {
+  appearance: none; border: 1px solid var(--border); background: var(--surface-1);
+  color: var(--text-secondary); border-radius: 10px; width: 38px; height: 38px;
+  font-size: 16px; line-height: 1; cursor: pointer; display: grid; place-items: center;
+}
+.iconbtn:active { background: var(--gridline); }
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+.card h2 {
+  font-size: 13px; font-weight: 600; color: var(--text-secondary);
+  margin: 0 0 14px; letter-spacing: .02em;
+}
+
+/* ---- hero ---- */
+.hero-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 2px; }
+.hero-figure {
+  font-size: 52px; font-weight: 640; line-height: 1.05; letter-spacing: -.02em;
+  display: flex; align-items: baseline; gap: 6px;
+}
+.hero-figure .unit { font-size: 20px; font-weight: 550; color: var(--text-secondary); letter-spacing: 0; }
+.hero-sub { font-size: 12.5px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+/* nothing to show yet: a 52px em-dash reads as a glitch, so shrink the whole figure */
+#heroCard.no-data .hero-figure { font-size: 22px; color: var(--text-muted); font-weight: 500; }
+#heroCard.no-data .hero-figure .unit { font-size: 13px; }
+.delta { font-size: 13px; font-weight: 600; margin-top: 6px; display: inline-flex; align-items: center; gap: 5px; }
+.delta.up { color: var(--critical); }
+.delta.down { color: var(--good); }
+.delta.flat { color: var(--text-muted); }
+
+.tiles {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+  background: var(--border); border-radius: 12px; overflow: hidden;
+  margin-top: 18px;
+}
+.tile { background: var(--surface-1); padding: 12px 10px; }
+.tile .t-label { font-size: 11.5px; color: var(--text-muted); margin-bottom: 4px; }
+.tile .t-value { font-size: 19px; font-weight: 620; letter-spacing: -.01em; }
+.tile .t-value .u { font-size: 11.5px; font-weight: 500; color: var(--text-secondary); margin-left: 2px; }
+.tile .t-foot {
+  font-size: 11px; color: var(--text-muted); margin-top: 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ---- form ---- */
+.row { display: flex; gap: 10px; }
+.field { flex: 1; min-width: 0; }
+label.lbl { display: block; font-size: 11.5px; color: var(--text-muted); margin-bottom: 5px; }
+input[type="date"], input[type="number"], input[type="text"] {
+  width: 100%; font: inherit; font-size: 16px;
+  padding: 11px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--field); color: var(--text-primary);
+  appearance: none;
+}
+input:focus { outline: 2px solid var(--series-1); outline-offset: -1px; }
+.btn {
+  appearance: none; border: none; cursor: pointer; font: inherit; font-size: 15px; font-weight: 600;
+  background: var(--series-1); color: #fff; padding: 12px 16px; border-radius: 11px; width: 100%;
+  margin-top: 12px;
+}
+.btn:active { filter: brightness(.92); }
+.btn.ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
+.btn.sm { width: auto; padding: 9px 14px; font-size: 13.5px; margin-top: 0; }
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
+.hint { font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.5; }
+.hint.warn { color: var(--warning); }
+.hint.err { color: var(--critical); }
+
+/* ---- chart ---- */
+.chart-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.chart-head h2 { margin: 0; flex: 1; }
+.seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex: none; }
+.seg button {
+  appearance: none; border: none; background: transparent; color: var(--text-muted);
+  font: inherit; font-size: 12px; padding: 5px 11px; cursor: pointer; line-height: 1.4;
+}
+.seg button[aria-pressed="true"] { background: var(--gridline); color: var(--text-primary); font-weight: 600; }
+.seg button:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+.chart-sub { font-size: 11.5px; color: var(--text-muted); margin-bottom: 12px; }
+#chartBox { position: relative; touch-action: pan-y; }
+#chart { display: block; width: 100%; }
+#chart text, #chart line, #chart path, #chart circle, #chart rect:not([data-i]) { pointer-events: none; }
+.tip {
+  position: absolute; pointer-events: none; opacity: 0; transition: opacity .1s;
+  background: var(--text-primary); color: var(--surface-1);
+  font-size: 11.5px; line-height: 1.6; padding: 8px 10px; border-radius: 9px;
+  white-space: nowrap; z-index: 5; transform: translate(-50%, -100%);
+}
+.tip b { font-weight: 650; }
+.tip.on { opacity: 1; }
+
+/* ---- list ---- */
+.rec { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--gridline); }
+.rec:first-of-type { border-top: none; }
+.rec-main { flex: 1; min-width: 0; }
+.rec-date { font-size: 14.5px; font-weight: 580; }
+.rec-meta { font-size: 12px; color: var(--text-muted); margin-top: 3px; line-height: 1.5; }
+.rec-meta .bad { color: var(--critical); }
+.rec-kwh { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.rec-kwh .u { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: 2px; }
+.rec-del {
+  appearance: none; border: none; background: transparent; color: var(--text-muted);
+  font-size: 17px; cursor: pointer; padding: 6px 2px 6px 6px; line-height: 1;
+}
+.empty { color: var(--text-muted); font-size: 13.5px; line-height: 1.7; }
+
+.settings-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--gridline); }
+.settings-row:first-of-type { border-top: none; }
+.settings-row .sr-label { flex: 1; font-size: 14px; }
+.settings-row input { width: 110px; }
+details > summary {
+  list-style: none; cursor: pointer; font-size: 13px; font-weight: 600;
+  color: var(--text-secondary); padding: 4px 0;
+}
+details > summary::-webkit-details-marker { display: none; }
+details > summary::after { content: " ▾"; color: var(--text-muted); }
+details[open] > summary::after { content: " ▴"; }
+details > div { padding-top: 14px; }
+footer { text-align: center; font-size: 11px; color: var(--text-muted); padding: 8px 0 0; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>⚡ 電費追蹤</h1>
+  <button class="iconbtn" id="themeBtn" title="切換深淺色" aria-label="切換深淺色">◐</button>
+</header>
+
+<!-- HERO -->
+<section class="card" id="heroCard">
+  <div class="hero-label">預估月費</div>
+  <div class="hero-figure"><span id="heroVal">—</span><span class="unit">元 / 月</span></div>
+  <div id="heroDelta"></div>
+  <div class="hero-sub" id="heroSub">還沒有資料。先記錄一次電表度數吧。</div>
+  <div class="tiles">
+    <div class="tile">
+      <div class="t-label">目前度數</div>
+      <div class="t-value" id="tCurrent">—</div>
+      <div class="t-foot" id="tCurrentFoot">尚未記錄</div>
+    </div>
+    <div class="tile">
+      <div class="t-label">每日平均</div>
+      <div class="t-value" id="tPerDay">—</div>
+      <div class="t-foot" id="tPerDayFoot">近 30 天</div>
+    </div>
+    <div class="tile">
+      <div class="t-label">累計花費</div>
+      <div class="t-value" id="tTotal">—</div>
+      <div class="t-foot" id="tTotalFoot">自開始記錄</div>
+    </div>
+  </div>
+</section>
+
+<!-- ADD -->
+<section class="card">
+  <h2>新增抄表紀錄</h2>
+  <div class="row">
+    <div class="field">
+      <label class="lbl" for="inDate">日期</label>
+      <input type="date" id="inDate">
+    </div>
+    <div class="field">
+      <label class="lbl" for="inKwh">電表度數（累計）</label>
+      <input type="number" id="inKwh" inputmode="decimal" step="0.1" placeholder="例：1234.5">
+    </div>
+  </div>
+  <button class="btn" id="addBtn">記錄</button>
+  <div class="hint" id="addHint"></div>
+</section>
+
+<!-- CHART -->
+<section class="card" id="chartCard">
+  <div class="chart-head">
+    <h2>每日平均用電趨勢</h2>
+    <div class="seg" role="group" aria-label="圖表形式">
+      <button type="button" data-mode="line" aria-pressed="true">折線</button>
+      <button type="button" data-mode="bar" aria-pressed="false">柱狀</button>
+    </div>
+  </div>
+  <div class="chart-sub">每一段＝兩次抄表之間，平均每天用了幾度</div>
+  <div id="chartBox">
+    <svg id="chart" role="img" aria-label="每日平均用電趨勢圖"></svg>
+    <div class="tip" id="tip"></div>
+  </div>
+  <div class="hint" id="chartHint"></div>
+</section>
+
+<!-- RECORDS -->
+<section class="card">
+  <h2>抄表紀錄</h2>
+  <div id="recList"><div class="empty">還沒有任何紀錄。</div></div>
+</section>
+
+<!-- SETTINGS -->
+<section class="card">
+  <details id="setDetails">
+    <summary>設定與資料</summary>
+    <div>
+      <div class="settings-row">
+        <div class="sr-label">電價<div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">元 / 度</div></div>
+        <input type="number" id="inPrice" inputmode="decimal" step="0.1" min="0">
+      </div>
+      <div class="settings-row" style="display:block">
+        <div class="sr-label" style="margin-bottom:10px">資料備份</div>
+        <div class="btnrow">
+          <button class="btn ghost sm" id="exportBtn">匯出 JSON</button>
+          <button class="btn ghost sm" id="importBtn">匯入 JSON</button>
+          <button class="btn ghost sm" id="csvBtn">匯出 CSV</button>
+        </div>
+        <div class="hint">資料只存在這支手機的瀏覽器裡。清除 Safari 網站資料會一併刪除，建議偶爾匯出備份。</div>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+    </div>
+  </details>
+</section>
+
+<footer>資料儲存於本機 · 加入主畫面即可離線使用</footer>
+</div>
+
+<script>
+"use strict";
+const KEY = "powerTracker.v1";
+const DAY = 86400000;
+
+/* ---------- state ---------- */
+let state = load();
+
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (s && Array.isArray(s.readings)) {
+        return {
+          price: Number(s.price) > 0 ? Number(s.price) : 6,
+          chartMode: s.chartMode === "bar" ? "bar" : "line",
+          readings: s.readings
+        };
+      }
+    }
+  } catch (e) { /* corrupted storage: fall through to defaults */ }
+  return { price: 6, chartMode: "line", readings: [] };
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); }
+  catch (e) { alert("儲存失敗：瀏覽器空間不足或處於私密瀏覽模式。"); }
+}
+
+/* ---------- helpers ---------- */
+const ts = d => new Date(d + "T00:00:00").getTime();
+const todayISO = () => {
+  const n = new Date();
+  return new Date(n.getTime() - n.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+const nf = (v, d = 1) => v.toLocaleString("zh-TW", { minimumFractionDigits: d, maximumFractionDigits: d });
+const money = v => Math.round(v).toLocaleString("zh-TW");
+const fmtDate = iso => iso.slice(5).replace("-", "/");
+
+function sorted() {
+  return state.readings.slice().sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+}
+
+/** Consecutive pairs of readings. `bad` marks a meter reset / typo (usage went down). */
+function intervals() {
+  const r = sorted(), out = [];
+  for (let i = 1; i < r.length; i++) {
+    const t0 = ts(r[i - 1].d), t1 = ts(r[i].d);
+    const days = (t1 - t0) / DAY;
+    if (days <= 0) continue;
+    const used = r[i].k - r[i - 1].k;
+    out.push({ d0: r[i - 1].d, d1: r[i].d, t0, t1, days, used, bad: used < 0, perDay: used / days });
+  }
+  return out;
+}
+
+/** kWh consumed inside [from, to], splitting partial intervals proportionally. */
+function windowUsage(ivs, from, to) {
+  let kwh = 0, days = 0;
+  for (const iv of ivs) {
+    if (iv.bad) continue;
+    const s = Math.max(iv.t0, from), e = Math.min(iv.t1, to);
+    if (e <= s) continue;
+    kwh += iv.used * ((e - s) / (iv.t1 - iv.t0));
+    days += (e - s) / DAY;
+  }
+  return { kwh, days };
+}
+
+/* ---------- render: summary ---------- */
+function renderSummary() {
+  const r = sorted(), ivs = intervals(), p = state.price;
+  const $ = id => document.getElementById(id);
+
+  document.getElementById("heroCard").classList.add("no-data");
+
+  if (!r.length) {
+    $("heroVal").textContent = "—";
+    $("heroDelta").innerHTML = "";
+    $("heroSub").textContent = "還沒有資料。先記錄一次電表度數吧。";
+    $("tCurrent").textContent = "—"; $("tCurrentFoot").textContent = "尚未記錄";
+    $("tPerDay").textContent = "—";  $("tPerDayFoot").textContent = "近 30 天";
+    $("tTotal").textContent = "—";   $("tTotalFoot").textContent = "自開始記錄";
+    return;
+  }
+
+  const last = r[r.length - 1];
+  const daysAgo = Math.round((ts(todayISO()) - ts(last.d)) / DAY);
+  $("tCurrent").innerHTML = nf(last.k, 1) + '<span class="u">度</span>';
+  $("tCurrentFoot").textContent = daysAgo <= 0 ? "今天抄的" : daysAgo + " 天前抄的";
+
+  const usable = ivs.filter(iv => !iv.bad);
+  if (!usable.length) {
+    $("heroVal").textContent = "—";
+    $("heroDelta").innerHTML = "";
+    $("heroSub").textContent = ivs.length
+      ? "度數比上一次還低，可能是換表或輸入錯誤。修正後才能計算。"
+      : "再記錄一次（隔幾天）就能算出用電趨勢。";
+    $("tPerDay").textContent = "—";
+    $("tTotal").textContent = "—";
+    return;
+  }
+
+  // Trailing 30-day rate, anchored at the latest reading.
+  const end = ts(last.d);
+  const cur = windowUsage(usable, end - 30 * DAY, end);
+  const prev = windowUsage(usable, end - 60 * DAY, end - 30 * DAY);
+  const perDay = cur.days > 0 ? cur.kwh / cur.days : usable[usable.length - 1].perDay;
+  const basisDays = cur.days > 0 ? cur.days : usable[usable.length - 1].days;
+
+  document.getElementById("heroCard").classList.remove("no-data");
+  $("heroVal").textContent = money(perDay * 30 * p);
+  $("heroSub").textContent =
+    "以最近 " + Math.round(basisDays) + " 天的用量推估 · 每度 " + nf(p, p % 1 ? 1 : 0) + " 元" +
+    (daysAgo >= 10 ? " · 已 " + daysAgo + " 天沒抄表了" : "");
+
+  const dEl = $("heroDelta");
+  if (prev.days >= 5) {
+    const prevRate = prev.kwh / prev.days;
+    const pct = prevRate > 0 ? (perDay - prevRate) / prevRate * 100 : 0;
+    const cls = Math.abs(pct) < 2 ? "flat" : pct > 0 ? "up" : "down";
+    const arrow = Math.abs(pct) < 2 ? "→" : pct > 0 ? "▲" : "▼";
+    dEl.innerHTML = '<span class="delta ' + cls + '">' + arrow + " " +
+      nf(Math.abs(pct), 0) + '%</span><span style="font-size:12.5px;color:var(--text-muted)"> 對比前 30 天</span>';
+  } else {
+    dEl.innerHTML = "";
+  }
+
+  $("tPerDay").innerHTML = nf(perDay, 1) + '<span class="u">度</span>';
+  $("tPerDayFoot").textContent = "約 " + money(perDay * p) + " 元/天";
+
+  const totKwh = usable.reduce((a, iv) => a + iv.used, 0);
+  const totDays = usable.reduce((a, iv) => a + iv.days, 0);
+  $("tTotal").innerHTML = money(totKwh * p) + '<span class="u">元</span>';
+  $("tTotalFoot").textContent = "共 " + nf(totKwh, 0) + " 度";
+  $("tTotalFoot").title = nf(totKwh, 0) + " 度 · " + Math.round(totDays) + " 天";
+}
+
+/* ---------- render: chart ---------- */
+const SVGNS = "http://www.w3.org/2000/svg";
+const el = (n, a) => { const e = document.createElementNS(SVGNS, n); for (const k in a) e.setAttribute(k, a[k]); return e; };
+
+function niceStep(max, target) {
+  const raw = max / target;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (raw <= m * mag) return m * mag;
+  return 10 * mag;
+}
+
+function renderChart() {
+  const svg = document.getElementById("chart");
+  const box = document.getElementById("chartBox");
+  const hint = document.getElementById("chartHint");
+  svg.textContent = "";
+  hideTip();
+
+  const data = intervals().filter(iv => !iv.bad);
+  if (data.length < 1) {
+    document.getElementById("chartCard").style.display = state.readings.length ? "" : "none";
+    svg.setAttribute("height", 0);
+    hint.textContent = state.readings.length ? "需要至少兩筆有效紀錄才能畫出趨勢。" : "";
+    return;
+  }
+  document.getElementById("chartCard").style.display = "";
+  hint.textContent = "";
+
+  const cs = getComputedStyle(document.documentElement);
+  const C = k => cs.getPropertyValue(k).trim();
+  const surface = C("--surface-1");
+
+  const W = Math.max(260, box.clientWidth);
+  const H = 220;
+  const PL = 40, PR = 10, PT = 14, PB = 26;
+  const plotW = W - PL - PR, plotH = H - PT - PB;
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+
+  const maxV = Math.max(...data.map(d => d.perDay), 0.1);
+  const step = niceStep(maxV, 4);
+  const yMax = Math.ceil(maxV / step) * step || step;
+  const y = v => PT + plotH - (v / yMax) * plotH;
+
+  // gridlines + y ticks
+  for (let v = 0; v <= yMax + 1e-9; v += step) {
+    const yy = Math.round(y(v)) + .5;
+    svg.appendChild(el("line", { x1: PL, x2: W - PR, y1: yy, y2: yy,
+      stroke: v === 0 ? C("--baseline") : C("--gridline"), "stroke-width": 1 }));
+    const t = el("text", { x: PL - 8, y: yy + 4, "text-anchor": "end", fill: C("--text-muted"),
+      "font-size": 10.5, "font-family": "inherit", style: "font-variant-numeric:tabular-nums" });
+    // a 2.5 step must not round to 0/3/5/8/10 — keep the decimal, then drop a trailing ".0"
+    t.textContent = v.toFixed(Number.isInteger(step) ? 0 : 1).replace(/\.0$/, "");
+    svg.appendChild(t);
+  }
+
+  // Both modes share the same x positions, so toggling only morphs the marks —
+  // nothing shifts sideways and the x labels stay put.
+  const band = plotW / data.length;
+  const cxAt = i => PL + band * (i + .5);
+  // one interval has no trend to draw — a lone dot reads as broken, so fall back to a bar
+  const mode = state.chartMode === "bar" || data.length < 2 ? "bar" : "line";
+
+  if (mode === "bar") {
+    // bars: 2px surface gap between neighbours, cap 24px, 4px rounded data-end
+    const bw = Math.max(3, Math.min(24, band - 2));
+    data.forEach((d, i) => {
+      const x = cxAt(i) - bw / 2;
+      const top = y(d.perDay);
+      const h = Math.max(1.5, PT + plotH - top);
+      const r = Math.min(4, bw / 2, h);
+      svg.appendChild(el("path", { fill: C("--series-1"), d:
+        "M" + x + "," + (PT + plotH) +
+        " L" + x + "," + (top + r) +
+        " Q" + x + "," + top + " " + (x + r) + "," + top +
+        " L" + (x + bw - r) + "," + top +
+        " Q" + (x + bw) + "," + top + " " + (x + bw) + "," + (top + r) +
+        " L" + (x + bw) + "," + (PT + plotH) + " Z" }));
+    });
+  } else {
+    const pts = data.map((d, i) => [cxAt(i), y(d.perDay)]);
+    const spine = pts.map((p, i) => (i ? "L" : "M") + p[0] + "," + p[1]).join(" ");
+    // area wash under the line, then the 2px line, then the markers on top
+    svg.appendChild(el("path", { fill: C("--series-1"), "fill-opacity": .10,
+      d: spine + " L" + pts[pts.length - 1][0] + "," + (PT + plotH) +
+         " L" + pts[0][0] + "," + (PT + plotH) + " Z" }));
+    svg.appendChild(el("path", { d: spine, fill: "none", stroke: C("--series-1"),
+      "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    // 2px surface ring keeps markers legible where they crowd together
+    pts.forEach(p => svg.appendChild(el("circle", { cx: p[0], cy: p[1], r: 4,
+      fill: C("--series-1"), stroke: surface, "stroke-width": 2 })));
+  }
+
+  // crosshair, revealed on hover in line mode
+  const cross = el("line", { y1: PT, y2: PT + plotH, stroke: C("--text-muted"),
+    "stroke-width": 1, opacity: 0, id: "crosshair" });
+  svg.appendChild(cross);
+
+  // hit targets: one full-height band per point, so the tap area is never mark-sized
+  data.forEach((d, i) => svg.appendChild(el("rect", { x: PL + band * i, y: PT,
+    width: band, height: plotH, fill: "transparent", "data-i": i, style: "cursor:pointer" })));
+
+  // all-time average reference line — drawn over the bars, its label on a surface patch
+  const avgAll = data.reduce((a, d) => a + d.used, 0) / data.reduce((a, d) => a + d.days, 0);
+  if (data.length >= 3 && avgAll > 0 && avgAll < yMax) {
+    const ay = Math.round(y(avgAll)) + .5;
+    svg.appendChild(el("line", { x1: PL, x2: W - PR, y1: ay, y2: ay,
+      stroke: C("--text-muted"), "stroke-width": 1, opacity: .7 }));
+    const label = "全期平均 " + nf(avgAll, 1);
+    svg.appendChild(el("rect", { x: PL + 1, y: ay - 15, width: label.length * 8, height: 13,
+      fill: surface, rx: 3 }));
+    const at = el("text", { x: PL + 4, y: ay - 5, "text-anchor": "start",
+      fill: C("--text-muted"), "font-size": 10, "font-family": "inherit" });
+    at.textContent = label;
+    svg.appendChild(at);
+  }
+
+  // value label on the last point only — clear the marker's ring in line mode
+  const lastD = data[data.length - 1];
+  const gap = mode === "bar" ? 6 : 11;
+  const lt = el("text", { x: cxAt(data.length - 1), y: Math.max(PT + 9, y(lastD.perDay) - gap),
+    "text-anchor": "middle", fill: C("--text-primary"), "font-size": 11, "font-weight": 640,
+    "font-family": "inherit" });
+  lt.textContent = nf(lastD.perDay, 1);
+  svg.appendChild(lt);
+
+  // x labels: first, last, and a few evenly spaced
+  const maxLabels = Math.max(2, Math.floor(plotW / 52));
+  const stride = Math.ceil(data.length / maxLabels);
+  data.forEach((d, i) => {
+    if (i !== data.length - 1 && (i % stride !== 0 || (data.length - 1 - i) < stride * .6)) return;
+    const t = el("text", { x: cxAt(i), y: H - 8, "text-anchor": "middle",
+      fill: C("--text-muted"), "font-size": 10, "font-family": "inherit" });
+    t.textContent = fmtDate(d.d1);
+    svg.appendChild(t);
+  });
+
+  // hover / tap
+  svg.onpointermove = ev => {
+    const t = ev.target;
+    const i = t.getAttribute && t.getAttribute("data-i");
+    if (i === null || i === undefined) return;
+    const cx = cxAt(+i);
+    if (mode !== "bar") {
+      cross.setAttribute("x1", cx); cross.setAttribute("x2", cx);
+      cross.setAttribute("opacity", .5);
+    }
+    showTip(data[+i], cx, y(data[+i].perDay));
+  };
+  const leave = () => { cross.setAttribute("opacity", 0); hideTip(); };
+  svg.onpointerleave = leave;
+  svg.onpointerdown = svg.onpointermove;
+  box.onpointerleave = leave;
+}
+
+function showTip(d, x, yTop) {
+  const tip = document.getElementById("tip");
+  tip.innerHTML =
+    fmtDate(d.d0) + " → " + fmtDate(d.d1) + "（" + Math.round(d.days) + " 天）<br>" +
+    "每日 <b>" + nf(d.perDay, 1) + " 度</b> · 約 " + money(d.perDay * state.price) + " 元<br>" +
+    "本期共 " + nf(d.used, 1) + " 度 · " + money(d.used * state.price) + " 元";
+  const box = document.getElementById("chartBox");
+  tip.classList.add("on");
+  const w = tip.offsetWidth;
+  const clamped = Math.min(Math.max(x, w / 2 + 2), box.clientWidth - w / 2 - 2);
+  tip.style.left = clamped + "px";
+  tip.style.top = Math.max(tip.offsetHeight + 4, yTop - 8) + "px";
+}
+function hideTip() { document.getElementById("tip").classList.remove("on"); }
+
+/* ---------- render: list ---------- */
+function renderList() {
+  const wrapEl = document.getElementById("recList");
+  const r = sorted();
+  if (!r.length) { wrapEl.innerHTML = '<div class="empty">還沒有任何紀錄。<br>抄一次電表，輸入上面的度數就開始了。</div>'; return; }
+
+  const ivByEnd = {};
+  for (const iv of intervals()) ivByEnd[iv.d1] = iv;
+
+  wrapEl.innerHTML = "";
+  for (let i = r.length - 1; i >= 0; i--) {
+    const rec = r[i], iv = ivByEnd[rec.d];
+    const row = document.createElement("div");
+    row.className = "rec";
+
+    let meta;
+    if (!iv) meta = "起始紀錄";
+    else if (iv.bad) meta = '<span class="bad">度數比前次低 ' + nf(-iv.used, 1) + " 度（換表或輸入錯誤？）</span>";
+    // NBSP keeps each number glued to its unit so a wrap never orphans "元" on its own line
+    else meta = Math.round(iv.days) + " 天 · " + nf(iv.used, 1) + " 度 · 每日 " +
+      nf(iv.perDay, 1) + " · " + money(iv.used * state.price) + " 元";
+
+    row.innerHTML =
+      '<div class="rec-main"><div class="rec-date">' + rec.d + '</div>' +
+      '<div class="rec-meta">' + meta + '</div></div>' +
+      '<div class="rec-kwh">' + nf(rec.k, 1) + '<span class="u">度</span></div>';
+
+    const del = document.createElement("button");
+    del.className = "rec-del"; del.textContent = "✕"; del.title = "刪除";
+    del.setAttribute("aria-label", "刪除 " + rec.d + " 的紀錄");
+    del.onclick = () => {
+      if (!confirm("刪除 " + rec.d + " 的紀錄（" + nf(rec.k, 1) + " 度）？")) return;
+      state.readings = state.readings.filter(x => x.d !== rec.d);
+      save(); renderAll();
+    };
+    row.appendChild(del);
+    wrapEl.appendChild(row);
+  }
+}
+
+function renderAll() { renderSummary(); renderChart(); renderList(); }
+
+/* ---------- actions ---------- */
+function addReading() {
+  const dEl = document.getElementById("inDate"), kEl = document.getElementById("inKwh");
+  const hint = document.getElementById("addHint");
+  const d = dEl.value, k = parseFloat(kEl.value);
+  hint.className = "hint";
+
+  if (!d) { hint.className = "hint err"; hint.textContent = "請選擇日期。"; return; }
+  if (!isFinite(k) || k < 0) { hint.className = "hint err"; hint.textContent = "請輸入有效的電表度數。"; return; }
+
+  const dup = state.readings.find(x => x.d === d);
+  if (dup && !confirm(d + " 已經有紀錄（" + nf(dup.k, 1) + " 度），要覆蓋成 " + nf(k, 1) + " 度嗎？")) return;
+
+  const before = sorted().filter(x => x.d < d).pop();
+  if (before && k < before.k) {
+    if (!confirm("這個度數（" + nf(k, 1) + "）比 " + before.d + " 的 " + nf(before.k, 1) +
+                 " 還低。確定要記錄嗎？（換表歸零才會這樣）")) return;
+  }
+
+  state.readings = state.readings.filter(x => x.d !== d);
+  state.readings.push({ d, k });
+  save();
+
+  kEl.value = "";
+  dEl.value = todayISO();
+  renderAll();
+
+  const iv = intervals().find(x => x.d1 === d);
+  if (iv && !iv.bad) {
+    hint.textContent = "已記錄 · 這 " + Math.round(iv.days) + " 天用了 " + nf(iv.used, 1) +
+      " 度，約 " + money(iv.used * state.price) + " 元。";
+  } else {
+    hint.textContent = "已記錄。";
+  }
+}
+
+function exportJSON() {
+  download("power-tracker-" + todayISO() + ".json",
+    JSON.stringify({ price: state.price, readings: sorted() }, null, 2), "application/json");
+}
+function exportCSV() {
+  const ivByEnd = {};
+  for (const iv of intervals()) ivByEnd[iv.d1] = iv;
+  const rows = [["日期", "電表度數", "間隔天數", "本期用電(度)", "每日平均(度)", "本期電費(元)"]];
+  for (const r of sorted()) {
+    const iv = ivByEnd[r.d];
+    rows.push(iv && !iv.bad
+      ? [r.d, r.k, Math.round(iv.days), iv.used.toFixed(1), iv.perDay.toFixed(2), Math.round(iv.used * state.price)]
+      : [r.d, r.k, "", "", "", ""]);
+  }
+  download("power-tracker-" + todayISO() + ".csv",
+    "﻿" + rows.map(r => r.join(",")).join("\n"), "text/csv");
+}
+function download(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type: type + ";charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function importJSON(file) {
+  const fr = new FileReader();
+  fr.onload = () => {
+    try {
+      const s = JSON.parse(fr.result);
+      if (!s || !Array.isArray(s.readings)) throw new Error("格式不符");
+      const clean = s.readings
+        .filter(x => x && typeof x.d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x.d) && isFinite(Number(x.k)))
+        .map(x => ({ d: x.d, k: Number(x.k) }));
+      if (!clean.length) throw new Error("沒有可用的紀錄");
+      if (!confirm("要用這個檔案的 " + clean.length + " 筆紀錄取代目前的 " +
+                   state.readings.length + " 筆嗎？")) return;
+      state.readings = clean;
+      if (Number(s.price) > 0) state.price = Number(s.price);
+      save();
+      document.getElementById("inPrice").value = state.price;
+      renderAll();
+    } catch (e) {
+      alert("匯入失敗：" + e.message);
+    }
+  };
+  fr.readAsText(file);
+}
+
+/* ---------- wire up ---------- */
+document.getElementById("inDate").value = todayISO();
+document.getElementById("inPrice").value = state.price;
+
+document.getElementById("addBtn").onclick = addReading;
+document.getElementById("inKwh").addEventListener("keydown", e => { if (e.key === "Enter") addReading(); });
+
+document.getElementById("inPrice").addEventListener("change", e => {
+  const v = parseFloat(e.target.value);
+  if (isFinite(v) && v > 0) { state.price = v; save(); renderAll(); }
+  else e.target.value = state.price;
+});
+
+document.querySelectorAll(".seg button").forEach(b => {
+  b.onclick = () => {
+    state.chartMode = b.dataset.mode;
+    save();
+    syncSeg();
+    renderChart();
+  };
+});
+function syncSeg() {
+  document.querySelectorAll(".seg button").forEach(b =>
+    b.setAttribute("aria-pressed", String(b.dataset.mode === state.chartMode)));
+}
+syncSeg();
+
+document.getElementById("exportBtn").onclick = exportJSON;
+document.getElementById("csvBtn").onclick = exportCSV;
+document.getElementById("importBtn").onclick = () => document.getElementById("importFile").click();
+document.getElementById("importFile").onchange = e => {
+  if (e.target.files[0]) importJSON(e.target.files[0]);
+  e.target.value = "";
+};
+
+const themeBtn = document.getElementById("themeBtn");
+const savedTheme = localStorage.getItem(KEY + ".theme");
+if (savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
+themeBtn.onclick = () => {
+  const isDark = getComputedStyle(document.documentElement).getPropertyValue("--page").trim() === "#0d0d0d";
+  const next = isDark ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem(KEY + ".theme", next);
+  renderChart();
+};
+
+let rt;
+addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(renderChart, 120); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderChart);
+
+renderAll();
+
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
