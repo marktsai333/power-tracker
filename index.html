@@ -262,6 +262,14 @@ input:focus { outline: 2px solid var(--series-1); outline-offset: -1px; }
   appearance: none; border: none; background: transparent; color: var(--text-muted);
   font-size: 17px; cursor: pointer; padding: 6px 2px 6px 6px; line-height: 1;
 }
+.rec-tap { cursor: pointer; }
+.rec-tap:active { background: var(--gridline); }
+.rec-edit { padding: 12px 0; border-top: 1px solid var(--gridline); }
+.rec-edit:first-of-type { border-top: none; }
+.rec-edit .row { margin-bottom: 10px; }
+.rec-edit .acts { display: flex; gap: 8px; }
+.rec-edit .acts .btn { flex: 1; margin-top: 0; }
+.list-hint { font-size: 11.5px; color: var(--text-muted); margin: -2px 0 10px; }
 .empty { color: var(--text-muted); font-size: 13.5px; line-height: 1.7; }
 
 .settings-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--gridline); }
@@ -403,7 +411,7 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
 "use strict";
 // Bump this on every release, and keep sw.js's CACHE constant in step —
 // the cache name is what forces phones off the previous build.
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 const KEY = "powerTracker.v1";
 const DAY = 86400000;
 
@@ -798,6 +806,51 @@ function showTip(d, x, yTop) {
 function hideTip() { document.getElementById("tip").classList.remove("on"); }
 
 /* ---------- render: list ---------- */
+let editing = null;   // date key of the row currently open for editing, or null
+
+// Inline editor: same validation as addReading(), but keyed on the row's original
+// date so changing the date moves the record instead of creating a second one.
+function editRow(rec) {
+  const box = document.createElement("div");
+  box.className = "rec-edit";
+  box.innerHTML =
+    '<div class="row">' +
+      '<div class="field"><label class="lbl">日期</label>' +
+        '<input type="date" class="e-date" value="' + rec.d + '"></div>' +
+      '<div class="field"><label class="lbl">電表度數</label>' +
+        '<input type="number" inputmode="decimal" step="0.1" min="0" class="e-kwh" value="' + rec.k + '"></div>' +
+    '</div>' +
+    '<div class="acts">' +
+      '<button class="btn sm e-save">儲存</button>' +
+      '<button class="btn ghost sm e-cancel">取消</button>' +
+    '</div>' +
+    '<div class="hint e-hint"></div>';
+
+  const dEl = box.querySelector(".e-date"), kEl = box.querySelector(".e-kwh");
+  const hint = box.querySelector(".e-hint");
+  const fail = m => { hint.className = "hint err e-hint"; hint.textContent = m; };
+
+  box.querySelector(".e-cancel").onclick = () => { editing = null; renderAll(); };
+  box.querySelector(".e-save").onclick = () => {
+    const d = dEl.value, k = parseFloat(kEl.value);
+    if (!d) return fail("請選擇日期。");
+    if (!isFinite(k) || k < 0) return fail("請輸入有效的電表度數。");
+    if (d !== rec.d && state.readings.some(x => x.d === d) &&
+        !confirm(d + " 已經有紀錄了，要覆蓋掉嗎？")) return;
+
+    const before = sorted().filter(x => x.d < d && x.d !== rec.d).pop();
+    if (before && k < before.k &&
+        !confirm("這個度數（" + nf(k, 1) + "）比 " + before.d + " 的 " + nf(before.k, 1) +
+                 " 還低。確定嗎？（換表歸零才會這樣）")) return;
+
+    state.readings = state.readings.filter(x => x.d !== rec.d && x.d !== d);
+    state.readings.push({ d, k });
+    editing = null; save(); renderAll();
+  };
+  kEl.addEventListener("keydown", e => { if (e.key === "Enter") box.querySelector(".e-save").click(); });
+  return box;
+}
+
 function renderList() {
   const wrapEl = document.getElementById("recList");
   const r = sorted();
@@ -806,11 +859,19 @@ function renderList() {
   const ivByEnd = {};
   for (const iv of intervals()) ivByEnd[iv.d1] = iv;
 
-  wrapEl.innerHTML = "";
+  wrapEl.innerHTML = '<div class="list-hint">點任一列可修改日期或度數。</div>';
   for (let i = r.length - 1; i >= 0; i--) {
     const rec = r[i], iv = ivByEnd[rec.d];
+    if (editing === rec.d) { wrapEl.appendChild(editRow(rec)); continue; }
     const row = document.createElement("div");
-    row.className = "rec";
+    row.className = "rec rec-tap";
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", "修改 " + rec.d + " 的紀錄");
+    row.onclick = () => { editing = rec.d; renderAll(); };
+    row.onkeydown = e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); editing = rec.d; renderAll(); }
+    };
 
     let meta;
     if (!iv) meta = "起始紀錄";
@@ -827,7 +888,8 @@ function renderList() {
     const del = document.createElement("button");
     del.className = "rec-del"; del.textContent = "✕"; del.title = "刪除";
     del.setAttribute("aria-label", "刪除 " + rec.d + " 的紀錄");
-    del.onclick = () => {
+    del.onclick = e => {
+      e.stopPropagation();
       if (!confirm("刪除 " + rec.d + " 的紀錄（" + nf(rec.k, 1) + " 度）？")) return;
       state.readings = state.readings.filter(x => x.d !== rec.d);
       save(); renderAll();
@@ -902,6 +964,7 @@ function addReading() {
 
   state.readings = state.readings.filter(x => x.d !== d);
   state.readings.push({ d, k });
+  editing = null;
   save();
 
   kEl.value = "";
@@ -954,6 +1017,7 @@ function importJSON(file) {
       if (!confirm("要用這個檔案的 " + clean.length + " 筆紀錄取代目前的 " +
                    state.readings.length + " 筆嗎？")) return;
       state.readings = clean;
+      editing = null;
       if (Number(s.price) > 0) state.price = Number(s.price);
       if (Number(s.settleDay) >= 1) state.settleDay = Number(s.settleDay);
       save();
