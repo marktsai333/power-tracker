@@ -1,14 +1,19 @@
 /* View-only navigation: never writes meter data or persists a stale date window. */
 const chartNavigation = (() => {
-  let windowTime = null, rows = [], visible = [], start = 0, count = 0;
+  let windowTime = null, rows = [], visible = [], start = 0, count = 0, pendingCount = null;
   let wired = false, drag = null, touch = null, left = 0, width = 1;
-  const api = { dragging: false, suppressClick: false, slice, connect };
+  const api = { dragging: false, suppressClick: false, slice, connect, selectUnit };
   const $ = id => document.getElementById(id);
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   function slice(data) {
     rows = data;
     start = 0; count = data.length;
-    if (windowTime && data.length) {
+    if (pendingCount && data.length) {
+      count = clamp(pendingCount, Math.min(3, data.length), data.length);
+      start = data.length - count;
+      windowTime = count === data.length ? null : [data[start].b, data[data.length - 1].e];
+      pendingCount = null;
+    } else if (windowTime && data.length) {
       start = data.findIndex(d => d.e > windowTime[0]);
       if (start < 0) start = data.length - 1;
       let end = data.findIndex(d => d.b >= windowTime[1]);
@@ -18,6 +23,12 @@ const chartNavigation = (() => {
     }
     visible = data.slice(start, start + count);
     return visible;
+  }
+  // A unit is also a useful starting scale: days answer "what happened lately?",
+  // weeks answer "how have the last few months changed?", and months show the year.
+  function selectUnit(unit) {
+    pendingCount = { day: 14, week: 12, month: 12 }[unit] || null;
+    windowTime = null;
   }
   function setWindow(s, n) {
     if (!rows.length) return;

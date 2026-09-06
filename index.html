@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>電費追蹤</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -444,7 +444,7 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
 "use strict";
 // Bump this on every release, and keep sw.js's CACHE constant in step —
 // the cache name is what forces phones off the previous build.
-const VERSION = "1.6.0";
+const VERSION = "1.6.1";
 const KEY = "powerTracker.v1";
 const DAY = 86400000;
 
@@ -1284,6 +1284,7 @@ document.querySelectorAll("#modeSeg button").forEach(b => {
 });
 document.querySelectorAll("#unitSeg button").forEach(b => {
   b.onclick = () => {
+    chartNavigation.selectUnit(b.dataset.unit);
     state.chartUnit = b.dataset.unit;
     save();
     renderChart();   // renderChart owns this segment's pressed state
