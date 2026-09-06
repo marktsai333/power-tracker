@@ -437,12 +437,12 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
 <footer>電費追蹤 <span id="footVer"></span> · 資料儲存於本機 · 加入主畫面即可離線使用</footer>
 </div>
 
-<script src="chart-nav.js?v=1.7.0"></script>
+<script src="chart-nav.js?v=1.7.1"></script>
 <script>
 "use strict";
 // Bump this on every release, and keep sw.js's CACHE constant in step —
 // the cache name is what forces phones off the previous build.
-const VERSION = "1.7.0";
+const VERSION = "1.7.1";
 const KEY = "powerTracker.v1";
 const DAY = 86400000;
 
@@ -1354,7 +1354,10 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderChar
 renderAll();
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
-  addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  // Version the worker URL and bypass the browser's HTTP cache. Otherwise iOS can
+  // keep launching a cached old shell before it ever checks for its replacement.
+  addEventListener("load", () => navigator.serviceWorker.register("sw.js?v=" + VERSION,
+    { updateViaCache: "none" }).catch(() => {}));
 }
 </script>
 </body>
