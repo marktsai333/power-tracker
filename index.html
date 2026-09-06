@@ -247,6 +247,11 @@ input:focus { outline: 2px solid var(--series-1); outline-offset: -1px; }
 .chart-legend i.low { opacity: .28; }
 .chart-legend i.proj { background: none; border: 1px dashed var(--series-1); }
 #chartBox { position: relative; touch-action: pan-y; }
+.chart-nav { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:8px 0; }
+.chart-nav[hidden], #chartOverview[hidden] { display:none; }
+.chart-nav button { min-width:44px; min-height:44px; }
+#chartRangeLabel { font-size:12px; color:var(--text-muted); }
+#chartOverview { width:100%; height:44px; display:block; touch-action:pan-y; cursor:ew-resize; }
 #chart { display: block; width: 100%; }
 #chart text, #chart line, #chart path, #chart circle, #chart rect:not([data-i]) { pointer-events: none; }
 .tip {
@@ -373,6 +378,11 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
     <svg id="chart" role="img" aria-label="用電量趨勢圖"></svg>
     <div class="tip" id="tip"></div>
   </div>
+  <div class="chart-nav" id="chartNav" hidden>
+    <span id="chartRangeLabel"></span>
+    <div class="seg"><button id="chartZoomOut" aria-label="縮小圖表">−</button><button id="chartZoomIn" aria-label="放大圖表">＋</button><button id="chartReset">全部</button></div>
+  </div>
+  <svg id="chartOverview" hidden role="img" aria-label="完整期間概覽，可左右拖曳移動顯示範圍"></svg>
   <div class="chart-legend" id="chartLegend" hidden></div>
   <div class="hint" id="chartHint"></div>
 </section>
@@ -429,11 +439,12 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
 <footer>電費追蹤 <span id="footVer"></span> · 資料儲存於本機 · 加入主畫面即可離線使用</footer>
 </div>
 
+<script src="chart-nav.js"></script>
 <script>
 "use strict";
 // Bump this on every release, and keep sw.js's CACHE constant in step —
 // the cache name is what forces phones off the previous build.
-const VERSION = "1.5.0";
+const VERSION = "1.6.0";
 const KEY = "powerTracker.v1";
 const DAY = 86400000;
 
@@ -786,6 +797,8 @@ function renderChart() {
 
   const ivs = intervals().filter(iv => !iv.bad);
   if (ivs.length < 1) {
+    document.getElementById("chartNav").hidden = true;
+    document.getElementById("chartOverview").setAttribute("hidden", "");
     document.getElementById("chartCard").style.display = state.readings.length ? "" : "none";
     svg.setAttribute("height", 0);
     unitRow.hidden = true;
@@ -800,7 +813,7 @@ function renderChart() {
   const T0 = ivs[0].t0, T1 = ivs[ivs.length - 1].t1;
   const plotWidth = Math.max(260, box.clientWidth) - 50;
   // ~8px per bar before they stop being bars; ~14px before they stop being comfortable
-  const avail = unitsFor(T0, T1, Math.max(10, Math.floor(plotWidth / 8)));
+  const avail = ["day", "week", "month"].filter(u => T1 - T0 >= MIN_SPAN[u]);
   if (!avail.length) avail.push("day");
   const roomy = Math.max(6, Math.floor(plotWidth / 14));
   // finest unit that still fits comfortably; the stored pick wins if it is offered
@@ -813,7 +826,8 @@ function renderChart() {
   });
   document.getElementById("chartSub").textContent = UNIT[unit].sub;
 
-  const data = buckets(unit, ivs, sorted());
+  const allData = buckets(unit, ivs, sorted());
+  const data = chartNavigation.slice(allData, unit);
   if (!data.length) { svg.setAttribute("height", 0); legend.hidden = true; return; }
 
   const cs = getComputedStyle(document.documentElement);
@@ -847,6 +861,7 @@ function renderChart() {
   }
 
   const band = plotW / data.length;
+  chartNavigation.connect(allData, data, unit, PL / W, plotW / W);
   const cxAt = i => PL + band * (i + .5);
   // how solid a bar looks = how much of it was actually measured
   // 0 = nothing measured at all, so the legend does not claim a share that isn't there
@@ -963,6 +978,7 @@ function renderChart() {
 
   // hover / tap
   svg.onpointermove = ev => {
+    if (ev.pointerType === "touch" || chartNavigation.dragging) return;
     const t = ev.target;
     const i = t.getAttribute && t.getAttribute("data-i");
     if (i === null || i === undefined) return;
@@ -975,7 +991,12 @@ function renderChart() {
   };
   const leave = () => { cross.setAttribute("opacity", 0); hideTip(); };
   svg.onpointerleave = leave;
-  svg.onpointerdown = svg.onpointermove;
+  box.onclick = ev => {
+    if (chartNavigation.suppressClick) return;
+    const rect = svg.getBoundingClientRect();
+    const i = Math.floor(((ev.clientX - rect.left) * W / rect.width - PL) / band);
+    if (i >= 0 && i < data.length) showTip(data[i], unit, cxAt(i), y(total(data[i])));
+  };
   box.onpointerleave = leave;
 }
 
