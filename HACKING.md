@@ -48,8 +48,12 @@ cd ~/power-tracker && git add -A && git commit -m "說明改了什麼" && git pu
 | 圖表長相 | `renderChart()`。折線 / 柱狀兩種畫法在同一個 `if (mode === "bar")` 分支裡 |
 | 預設圖表形式 | `load()` 裡的 `s.chartMode === "bar" ? "bar" : "line"`（目前預設折線） |
 | 清單每行文字 | `renderList()` |
-| 就地編輯表單 | `editRow()`，開關狀態存在模組層的 `editing`（值是那一列的日期） |
+| 就地編輯表單 | `editRow()`，開關狀態存在模組層的 `editing`（值是那一列的 `d`） |
+| 日期時間解析 / 顯示 | `ts()` / `dayOf()` / `timeOf()` / `fmtFull()` / `fmtDur()` |
 | 新增紀錄的驗證邏輯 | `addReading()` |
+
+> 紀錄的鍵 `d` 是 `YYYY-MM-DDTHH:MM`，舊資料的 `YYYY-MM-DD` 一律視同當日 00:00。
+> 兩種格式都能用字串直接排序，不要改成 Date 物件比大小。
 | 推估的時間窗（30 天 → 60 天） | `renderSummary()` 裡的 `end - 30 * DAY` |
 | 匯出格式 | `exportJSON()` / `exportCSV()` |
 

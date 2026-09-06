@@ -206,7 +206,7 @@ header h1 { font-size: 17px; font-weight: 650; margin: 0; letter-spacing: .01em;
 .row { display: flex; gap: 10px; }
 .field { flex: 1; min-width: 0; }
 label.lbl { display: block; font-size: 11.5px; color: var(--text-muted); margin-bottom: 5px; }
-input[type="date"], input[type="number"], input[type="text"] {
+input[type="date"], input[type="time"], input[type="number"], input[type="text"] {
   width: 100%; font: inherit; font-size: 16px;
   padding: 11px 12px; border-radius: 10px;
   border: 1px solid var(--border); background: var(--field); color: var(--text-primary);
@@ -254,6 +254,7 @@ input:focus { outline: 2px solid var(--series-1); outline-offset: -1px; }
 .rec:first-of-type { border-top: none; }
 .rec-main { flex: 1; min-width: 0; }
 .rec-date { font-size: 14.5px; font-weight: 580; }
+.rec-date .rec-time { font-weight: 500; color: var(--text-secondary); margin-left: 6px; font-size: 13px; }
 .rec-meta { font-size: 12px; color: var(--text-muted); margin-top: 3px; line-height: 1.5; }
 .rec-meta .bad { color: var(--critical); }
 .rec-kwh { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
@@ -330,9 +331,13 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
       <input type="date" id="inDate">
     </div>
     <div class="field">
-      <label class="lbl" for="inKwh">電表度數（累計）</label>
-      <input type="number" id="inKwh" inputmode="decimal" step="0.1" placeholder="例：1234.5">
+      <label class="lbl" for="inTime">時間</label>
+      <input type="time" id="inTime">
     </div>
+  </div>
+  <div class="field" style="margin-top:10px">
+    <label class="lbl" for="inKwh">電表度數（累計）</label>
+    <input type="number" id="inKwh" inputmode="decimal" step="0.1" placeholder="例：1234.5">
   </div>
   <button class="btn" id="addBtn">記錄</button>
   <div class="hint" id="addHint"></div>
@@ -411,7 +416,7 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
 "use strict";
 // Bump this on every release, and keep sw.js's CACHE constant in step —
 // the cache name is what forces phones off the previous build.
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const KEY = "powerTracker.v1";
 const DAY = 86400000;
 
@@ -441,14 +446,32 @@ function save() {
 }
 
 /* ---------- helpers ---------- */
-const ts = d => new Date(d + "T00:00:00").getTime();
+// A reading's key is "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM". Both sort correctly as
+// strings, and a bare date means midnight — which is what pre-1.3 records were.
+const ts = d => new Date((d.length > 10 ? d : d + "T00:00") + ":00").getTime();
+const dayOf = d => d.slice(0, 10);
+const timeOf = d => (d.length > 10 ? d.slice(11, 16) : "");
+const nowHM = () => {
+  const n = new Date();
+  return String(n.getHours()).padStart(2, "0") + ":" + String(n.getMinutes()).padStart(2, "0");
+};
 const todayISO = () => {
   const n = new Date();
   return new Date(n.getTime() - n.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
 const nf = (v, d = 1) => v.toLocaleString("zh-TW", { minimumFractionDigits: d, maximumFractionDigits: d });
 const money = v => Math.round(v).toLocaleString("zh-TW");
-const fmtDate = iso => iso.slice(5).replace("-", "/");
+const fmtDate = iso => iso.slice(5, 10).replace("-", "/");
+const fmtFull = iso => timeOf(iso) ? fmtDate(iso) + " " + timeOf(iso) : fmtDate(iso);
+/** Intervals now run from minutes to months, so pick a unit that stays readable. */
+function fmtDur(days) {
+  const h = days * 24;
+  if (h < 1) return Math.max(1, Math.round(h * 60)) + "\u00a0分鐘";
+  const wh = Math.round(h);
+  if (wh < 24) return wh + "\u00a0小時";
+  if (wh < 48) return wh % 24 === 0 ? "1\u00a0天" : "1\u00a0天 " + (wh % 24) + "\u00a0小時";
+  return Math.round(days) + "\u00a0天";
+}
 
 function sorted() {
   return state.readings.slice().sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
@@ -544,7 +567,7 @@ function renderSummary() {
   }
 
   const last = r[r.length - 1];
-  const daysAgo = Math.round((ts(todayISO()) - ts(last.d)) / DAY);
+  const daysAgo = dayOf(last.d) === todayISO() ? 0 : Math.max(1, Math.floor((Date.now() - ts(last.d)) / DAY));
   $("tCurrent").innerHTML = nf(last.k, 1) + '<span class="u">度</span>';
   $("tCurrentFoot").textContent = daysAgo <= 0 ? "今天抄的" : daysAgo + " 天前抄的";
 
@@ -768,7 +791,7 @@ function renderChart() {
     if (i !== data.length - 1 && (i % stride !== 0 || (data.length - 1 - i) < stride * .6)) return;
     const t = el("text", { x: cxAt(i), y: H - 8, "text-anchor": "middle",
       fill: C("--text-muted"), "font-size": 10, "font-family": "inherit" });
-    t.textContent = fmtDate(d.d1);
+    t.textContent = d.days < 1 && timeOf(d.d1) ? timeOf(d.d1) : fmtDate(d.d1);
     svg.appendChild(t);
   });
 
@@ -793,7 +816,7 @@ function renderChart() {
 function showTip(d, x, yTop) {
   const tip = document.getElementById("tip");
   tip.innerHTML =
-    fmtDate(d.d0) + " → " + fmtDate(d.d1) + "（" + Math.round(d.days) + " 天）<br>" +
+    fmtFull(d.d0) + " → " + fmtFull(d.d1) + "（" + fmtDur(d.days) + "）<br>" +
     "每日 <b>" + nf(d.perDay, 1) + " 度</b> · 約 " + money(d.perDay * state.price) + " 元<br>" +
     "本期共 " + nf(d.used, 1) + " 度 · " + money(d.used * state.price) + " 元";
   const box = document.getElementById("chartBox");
@@ -816,31 +839,35 @@ function editRow(rec) {
   box.innerHTML =
     '<div class="row">' +
       '<div class="field"><label class="lbl">日期</label>' +
-        '<input type="date" class="e-date" value="' + rec.d + '"></div>' +
-      '<div class="field"><label class="lbl">電表度數</label>' +
-        '<input type="number" inputmode="decimal" step="0.1" min="0" class="e-kwh" value="' + rec.k + '"></div>' +
+        '<input type="date" class="e-date" value="' + dayOf(rec.d) + '"></div>' +
+      '<div class="field"><label class="lbl">時間</label>' +
+        '<input type="time" class="e-time" value="' + timeOf(rec.d) + '"></div>' +
     '</div>' +
+    '<div class="field" style="margin-bottom:10px"><label class="lbl">電表度數</label>' +
+      '<input type="number" inputmode="decimal" step="0.1" min="0" class="e-kwh" value="' + rec.k + '"></div>' +
     '<div class="acts">' +
       '<button class="btn sm e-save">儲存</button>' +
       '<button class="btn ghost sm e-cancel">取消</button>' +
     '</div>' +
     '<div class="hint e-hint"></div>';
 
-  const dEl = box.querySelector(".e-date"), kEl = box.querySelector(".e-kwh");
+  const dEl = box.querySelector(".e-date"), tEl = box.querySelector(".e-time");
+  const kEl = box.querySelector(".e-kwh");
   const hint = box.querySelector(".e-hint");
   const fail = m => { hint.className = "hint err e-hint"; hint.textContent = m; };
 
   box.querySelector(".e-cancel").onclick = () => { editing = null; renderAll(); };
   box.querySelector(".e-save").onclick = () => {
-    const d = dEl.value, k = parseFloat(kEl.value);
+    const d = dEl.value ? (tEl.value ? dEl.value + "T" + tEl.value : dEl.value) : "";
+    const k = parseFloat(kEl.value);
     if (!d) return fail("請選擇日期。");
     if (!isFinite(k) || k < 0) return fail("請輸入有效的電表度數。");
     if (d !== rec.d && state.readings.some(x => x.d === d) &&
-        !confirm(d + " 已經有紀錄了，要覆蓋掉嗎？")) return;
+          !confirm(fmtFull(d) + " 已經有紀錄了，要覆蓋掉嗎？")) return;
 
     const before = sorted().filter(x => x.d < d && x.d !== rec.d).pop();
     if (before && k < before.k &&
-        !confirm("這個度數（" + nf(k, 1) + "）比 " + before.d + " 的 " + nf(before.k, 1) +
+        !confirm("這個度數（" + nf(k, 1) + "）比 " + fmtFull(before.d) + " 的 " + nf(before.k, 1) +
                  " 還低。確定嗎？（換表歸零才會這樣）")) return;
 
     state.readings = state.readings.filter(x => x.d !== rec.d && x.d !== d);
@@ -867,7 +894,7 @@ function renderList() {
     row.className = "rec rec-tap";
     row.tabIndex = 0;
     row.setAttribute("role", "button");
-    row.setAttribute("aria-label", "修改 " + rec.d + " 的紀錄");
+    row.setAttribute("aria-label", "修改 " + fmtFull(rec.d) + " 的紀錄");
     row.onclick = () => { editing = rec.d; renderAll(); };
     row.onkeydown = e => {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); editing = rec.d; renderAll(); }
@@ -877,20 +904,21 @@ function renderList() {
     if (!iv) meta = "起始紀錄";
     else if (iv.bad) meta = '<span class="bad">度數比前次低 ' + nf(-iv.used, 1) + " 度（換表或輸入錯誤？）</span>";
     // NBSP keeps each number glued to its unit so a wrap never orphans "元" on its own line
-    else meta = Math.round(iv.days) + " 天 · " + nf(iv.used, 1) + " 度 · 每日 " +
+    else meta = fmtDur(iv.days) + " · " + nf(iv.used, 1) + " 度 · 每日 " +
       nf(iv.perDay, 1) + " · " + money(iv.used * state.price) + " 元";
 
     row.innerHTML =
-      '<div class="rec-main"><div class="rec-date">' + rec.d + '</div>' +
+      '<div class="rec-main"><div class="rec-date">' + dayOf(rec.d) +
+        (timeOf(rec.d) ? '<span class="rec-time">' + timeOf(rec.d) + '</span>' : '') + '</div>' +
       '<div class="rec-meta">' + meta + '</div></div>' +
       '<div class="rec-kwh">' + nf(rec.k, 1) + '<span class="u">度</span></div>';
 
     const del = document.createElement("button");
     del.className = "rec-del"; del.textContent = "✕"; del.title = "刪除";
-    del.setAttribute("aria-label", "刪除 " + rec.d + " 的紀錄");
+    del.setAttribute("aria-label", "刪除 " + fmtFull(rec.d) + " 的紀錄");
     del.onclick = e => {
       e.stopPropagation();
-      if (!confirm("刪除 " + rec.d + " 的紀錄（" + nf(rec.k, 1) + " 度）？")) return;
+      if (!confirm("刪除 " + fmtFull(rec.d) + " 的紀錄（" + nf(rec.k, 1) + " 度）？")) return;
       state.readings = state.readings.filter(x => x.d !== rec.d);
       save(); renderAll();
     };
@@ -945,20 +973,23 @@ function renderAll() { renderSummary(); renderChart(); renderBills(); renderList
 
 /* ---------- actions ---------- */
 function addReading() {
-  const dEl = document.getElementById("inDate"), kEl = document.getElementById("inKwh");
+  const dEl = document.getElementById("inDate"), tEl = document.getElementById("inTime");
+  const kEl = document.getElementById("inKwh");
   const hint = document.getElementById("addHint");
-  const d = dEl.value, k = parseFloat(kEl.value);
+  // No time given still means midnight, so a date-only entry behaves as it always did.
+  const d = dEl.value ? (tEl.value ? dEl.value + "T" + tEl.value : dEl.value) : "";
+  const k = parseFloat(kEl.value);
   hint.className = "hint";
 
   if (!d) { hint.className = "hint err"; hint.textContent = "請選擇日期。"; return; }
   if (!isFinite(k) || k < 0) { hint.className = "hint err"; hint.textContent = "請輸入有效的電表度數。"; return; }
 
   const dup = state.readings.find(x => x.d === d);
-  if (dup && !confirm(d + " 已經有紀錄（" + nf(dup.k, 1) + " 度），要覆蓋成 " + nf(k, 1) + " 度嗎？")) return;
+  if (dup && !confirm(fmtFull(d) + " 已經有紀錄（" + nf(dup.k, 1) + " 度），要覆蓋成 " + nf(k, 1) + " 度嗎？")) return;
 
   const before = sorted().filter(x => x.d < d).pop();
   if (before && k < before.k) {
-    if (!confirm("這個度數（" + nf(k, 1) + "）比 " + before.d + " 的 " + nf(before.k, 1) +
+    if (!confirm("這個度數（" + nf(k, 1) + "）比 " + fmtFull(before.d) + " 的 " + nf(before.k, 1) +
                  " 還低。確定要記錄嗎？（換表歸零才會這樣）")) return;
   }
 
@@ -969,11 +1000,12 @@ function addReading() {
 
   kEl.value = "";
   dEl.value = todayISO();
+  tEl.value = nowHM();
   renderAll();
 
   const iv = intervals().find(x => x.d1 === d);
   if (iv && !iv.bad) {
-    hint.textContent = "已記錄 · 這 " + Math.round(iv.days) + " 天用了 " + nf(iv.used, 1) +
+    hint.textContent = "已記錄 · 這 " + fmtDur(iv.days) + "用了 " + nf(iv.used, 1) +
       " 度，約 " + money(iv.used * state.price) + " 元。";
   } else {
     hint.textContent = "已記錄。";
@@ -988,11 +1020,11 @@ function exportJSON() {
 function exportCSV() {
   const ivByEnd = {};
   for (const iv of intervals()) ivByEnd[iv.d1] = iv;
-  const rows = [["日期", "電表度數", "間隔天數", "本期用電(度)", "每日平均(度)", "本期電費(元)"]];
+  const rows = [["日期時間", "電表度數", "間隔(天)", "本期用電(度)", "每日平均(度)", "本期電費(元)"]];
   for (const r of sorted()) {
     const iv = ivByEnd[r.d];
     rows.push(iv && !iv.bad
-      ? [r.d, r.k, Math.round(iv.days), iv.used.toFixed(1), iv.perDay.toFixed(2), Math.round(iv.used * state.price)]
+      ? [r.d, r.k, iv.days.toFixed(2), iv.used.toFixed(1), iv.perDay.toFixed(2), Math.round(iv.used * state.price)]
       : [r.d, r.k, "", "", "", ""]);
   }
   download("power-tracker-" + todayISO() + ".csv",
@@ -1011,7 +1043,7 @@ function importJSON(file) {
       const s = JSON.parse(fr.result);
       if (!s || !Array.isArray(s.readings)) throw new Error("格式不符");
       const clean = s.readings
-        .filter(x => x && typeof x.d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x.d) && isFinite(Number(x.k)))
+        .filter(x => x && typeof x.d === "string" && /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(x.d) && isFinite(Number(x.k)))
         .map(x => ({ d: x.d, k: Number(x.k) }));
       if (!clean.length) throw new Error("沒有可用的紀錄");
       if (!confirm("要用這個檔案的 " + clean.length + " 筆紀錄取代目前的 " +
@@ -1033,11 +1065,13 @@ function importJSON(file) {
 
 /* ---------- wire up ---------- */
 document.getElementById("inDate").value = todayISO();
+document.getElementById("inTime").value = nowHM();
 document.getElementById("inPrice").value = state.price;
 document.getElementById("inSettle").value = state.settleDay;
 
 document.getElementById("addBtn").onclick = addReading;
 document.getElementById("inKwh").addEventListener("keydown", e => { if (e.key === "Enter") addReading(); });
+document.getElementById("inTime").addEventListener("keydown", e => { if (e.key === "Enter") addReading(); });
 
 document.getElementById("inPrice").addEventListener("change", e => {
   const v = parseFloat(e.target.value);
