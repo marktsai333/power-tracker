@@ -1,8 +1,8 @@
 // Cache-first shell so the app opens with no network at the meter cupboard.
 // Keep this version in step with VERSION in index.html — changing the cache name is
 // what evicts the previous build from everyone's phone.
-const CACHE = "power-tracker-v1.6.1";
-const SHELL = ["./", "./index.html", "./chart-nav.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./icon-180.png"];
+const CACHE = "power-tracker-v1.7.0";
+const SHELL = ["./", "./index.html", "./chart-nav.js?v=1.7.0", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./icon-180.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

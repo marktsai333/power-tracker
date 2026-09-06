@@ -247,11 +247,10 @@ input:focus { outline: 2px solid var(--series-1); outline-offset: -1px; }
 .chart-legend i.low { opacity: .28; }
 .chart-legend i.proj { background: none; border: 1px dashed var(--series-1); }
 #chartBox { position: relative; touch-action: pan-y; }
-.chart-nav { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:8px 0; }
-.chart-nav[hidden], #chartOverview[hidden] { display:none; }
-.chart-nav button { min-width:44px; min-height:44px; }
+.chart-history { display:flex; align-items:center; justify-content:space-between; min-height:30px; margin:-2px 0 7px; }
+.chart-history[hidden] { display:none; }
 #chartRangeLabel { font-size:12px; color:var(--text-muted); }
-#chartOverview { width:100%; height:44px; display:block; touch-action:pan-y; cursor:ew-resize; }
+#chartToday { width:auto; margin:0; padding:6px 10px; font-size:12px; }
 #chart { display: block; width: 100%; }
 #chart text, #chart line, #chart path, #chart circle, #chart rect:not([data-i]) { pointer-events: none; }
 .tip {
@@ -378,11 +377,10 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
     <svg id="chart" role="img" aria-label="用電量趨勢圖"></svg>
     <div class="tip" id="tip"></div>
   </div>
-  <div class="chart-nav" id="chartNav" hidden>
+  <div class="chart-history" id="chartHistory" hidden>
     <span id="chartRangeLabel"></span>
-    <div class="seg"><button id="chartZoomOut" aria-label="縮小圖表">−</button><button id="chartZoomIn" aria-label="放大圖表">＋</button><button id="chartReset">全部</button></div>
+    <button class="btn ghost sm" id="chartToday" hidden>回到今天</button>
   </div>
-  <svg id="chartOverview" hidden role="img" aria-label="完整期間概覽，可左右拖曳移動顯示範圍"></svg>
   <div class="chart-legend" id="chartLegend" hidden></div>
   <div class="hint" id="chartHint"></div>
 </section>
@@ -439,12 +437,12 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
 <footer>電費追蹤 <span id="footVer"></span> · 資料儲存於本機 · 加入主畫面即可離線使用</footer>
 </div>
 
-<script src="chart-nav.js"></script>
+<script src="chart-nav.js?v=1.7.0"></script>
 <script>
 "use strict";
 // Bump this on every release, and keep sw.js's CACHE constant in step —
 // the cache name is what forces phones off the previous build.
-const VERSION = "1.6.1";
+const VERSION = "1.7.0";
 const KEY = "powerTracker.v1";
 const DAY = 86400000;
 
@@ -797,8 +795,7 @@ function renderChart() {
 
   const ivs = intervals().filter(iv => !iv.bad);
   if (ivs.length < 1) {
-    document.getElementById("chartNav").hidden = true;
-    document.getElementById("chartOverview").setAttribute("hidden", "");
+    document.getElementById("chartHistory").hidden = true;
     document.getElementById("chartCard").style.display = state.readings.length ? "" : "none";
     svg.setAttribute("height", 0);
     unitRow.hidden = true;
