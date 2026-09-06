@@ -46,10 +46,14 @@ cd ~/power-tracker && git add -A && git commit -m "說明改了什麼" && git pu
 | 顏色 / 字級 / 間距 | 檔頭 `<style>`。顏色都是 CSS 變數（`--series-1` 等），改一處全站套用 |
 | 上方卡片顯示的數字 | `renderSummary()` |
 | 圖表長相 | `renderChart()`。折線 / 柱狀兩種畫法在同一個 `if (mode === "bar")` 分支裡 |
-| 橫軸比例 | `xAt(t)`，時間線性對應像素；柱子寬度＝該區間長度，折線是階梯線 |
-| 顯示範圍 | `state.chartRange`（30 / 90 / 0＝全部）。跨度不到 32 天時整排 `#rangeRow` 直接隱藏 |
+| 橫軸分格 | `buckets()`。把每個抄表區間按時間倒進它跨到的整日 / 整週 / 整月裡，每格記下 `exact`（整段都在格內＝實測）、`split`（跨格分攤）、`proj`（推估）|
+| 日 / 週 / 月的邊界 | `UNIT` 表裡的 `start` / `next`。`next` 一律先超過再退回整點，夏令時間和大小月才不會漂掉 |
+| 哪些單位可選 | `unitsFor()`：跨度要夠（`MIN_SPAN`）、格數要在 2 到「畫面寬 ÷ 8」之間。只剩一種時整排 `#unitRow` 隱藏 |
+| 預設選哪個單位 | `renderChart()` 裡的 `auto`：最細且格數不超過「畫面寬 ÷ 14」的那個 |
+| 深淺代表什麼 | `solidity()`：≥ 半數實測＝不透明，多半是分攤＝ .55，那一格還沒抄完整＝ .28 |
+| 推估怎麼算 | `buckets()` 用 `recentPerDay()`（近 30 天日均）補最後一筆抄表之後的空白，畫成虛線框 |
 | 預設圖表形式 | `load()` 裡的 `s.chartMode === "bar" ? "bar" : "line"`（目前預設折線） |
-| 預設顯示範圍 | `load()` 裡的 `chartRange`，預設 90 天 |
+| 預設時間單位 | `load()` 裡的 `chartUnit`，預設 `"auto"`（交給 `renderChart()` 挑）|
 | 清單每行文字 | `renderList()` |
 | 就地編輯表單 | `editRow()`，開關狀態存在模組層的 `editing`（值是那一列的 `d`） |
 | 日期時間解析 / 顯示 | `ts()` / `dayOf()` / `timeOf()` / `fmtFull()` / `fmtDur()` |
@@ -57,7 +61,7 @@ cd ~/power-tracker && git add -A && git commit -m "說明改了什麼" && git pu
 
 > 紀錄的鍵 `d` 是 `YYYY-MM-DDTHH:MM`，舊資料的 `YYYY-MM-DD` 一律視同當日 00:00。
 > 兩種格式都能用字串直接排序，不要改成 Date 物件比大小。
-| 推估的時間窗（30 天 → 60 天） | `renderSummary()` 裡的 `end - 30 * DAY` |
+| 推估的時間窗（30 天 → 60 天） | `recentPerDay()`；卡片與圖表共用同一個日均 |
 | 匯出格式 | `exportJSON()` / `exportCSV()` |
 
 ## 加新功能的路徑
@@ -81,11 +85,11 @@ cd ~/power-tracker && git add -A && git commit -m "說明改了什麼" && git pu
 ```
         load()  ←── localStorage        開 App 時讀一次
           ↓
-        state   { price, settleDay, chartMode, readings[] }
+        state   { price, settleDay, chartMode, chartUnit, readings[] }
           ↓
       renderAll()
           ├── renderSummary()   → 上方卡片
-          ├── renderChart()     → SVG 階梯折線 / 長條圖（橫軸＝時間）
+          ├── renderChart()     → SVG 折線 / 長條圖（橫軸＝整日 / 整週 / 整月）
           ├── renderBills()     → 歷史帳單
           └── renderList()      → 下方清單
 ```
