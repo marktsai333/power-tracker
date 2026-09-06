@@ -237,6 +237,7 @@ input:focus { outline: 2px solid var(--series-1); outline-offset: -1px; }
 .seg button[aria-pressed="true"] { background: var(--gridline); color: var(--text-primary); font-weight: 600; }
 .seg button:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
 .chart-sub { font-size: 11.5px; color: var(--text-muted); margin-bottom: 12px; }
+.chart-range { display: flex; justify-content: flex-end; margin: -6px 0 10px; }
 #chartBox { position: relative; touch-action: pan-y; }
 #chart { display: block; width: 100%; }
 #chart text, #chart line, #chart path, #chart circle, #chart rect:not([data-i]) { pointer-events: none; }
@@ -347,12 +348,19 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
 <section class="card" id="chartCard">
   <div class="chart-head">
     <h2>每日平均用電趨勢</h2>
-    <div class="seg" role="group" aria-label="圖表形式">
+    <div class="seg" id="modeSeg" role="group" aria-label="圖表形式">
       <button type="button" data-mode="line" aria-pressed="true">折線</button>
       <button type="button" data-mode="bar" aria-pressed="false">柱狀</button>
     </div>
   </div>
-  <div class="chart-sub">每一段＝兩次抄表之間，平均每天用了幾度</div>
+  <div class="chart-sub">每一段＝兩次抄表之間，平均每天用了幾度；橫軸是實際時間，寬度就是相隔多久</div>
+  <div class="chart-range" id="rangeRow" hidden>
+    <div class="seg" id="rangeSeg" role="group" aria-label="顯示範圍">
+      <button type="button" data-range="30" aria-pressed="false">30 天</button>
+      <button type="button" data-range="90" aria-pressed="true">90 天</button>
+      <button type="button" data-range="0" aria-pressed="false">全部</button>
+    </div>
+  </div>
   <div id="chartBox">
     <svg id="chart" role="img" aria-label="每日平均用電趨勢圖"></svg>
     <div class="tip" id="tip"></div>
@@ -416,7 +424,7 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
 "use strict";
 // Bump this on every release, and keep sw.js's CACHE constant in step —
 // the cache name is what forces phones off the previous build.
-const VERSION = "1.3.0";
+const VERSION = "1.4.0";
 const KEY = "powerTracker.v1";
 const DAY = 86400000;
 
@@ -433,12 +441,13 @@ function load() {
           price: Number(s.price) > 0 ? Number(s.price) : 6,
           settleDay: Number(s.settleDay) >= 1 ? Number(s.settleDay) : 15,
           chartMode: s.chartMode === "bar" ? "bar" : "line",
+          chartRange: [30, 90, 0].includes(Number(s.chartRange)) ? Number(s.chartRange) : 90,
           readings: s.readings
         };
       }
     }
   } catch (e) { /* corrupted storage: fall through to defaults */ }
-  return { price: 6, settleDay: 15, chartMode: "line", readings: [] };
+  return { price: 6, settleDay: 15, chartMode: "line", chartRange: 90, readings: [] };
 }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); }
@@ -662,6 +671,7 @@ function renderSummary() {
 const SVGNS = "http://www.w3.org/2000/svg";
 const el = (n, a) => { const e = document.createElementNS(SVGNS, n); for (const k in a) e.setAttribute(k, a[k]); return e; };
 
+/** Round the y-axis step to something a person reads without thinking. */
 function niceStep(max, target) {
   const raw = max / target;
   const mag = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -669,22 +679,36 @@ function niceStep(max, target) {
   return 10 * mag;
 }
 
+// Readings land whenever the meter gets read — twice in one day, then not for a
+// fortnight. So x is real elapsed time, not one slot per reading: a bar's width is
+// how long that interval lasted, and its area is the kWh it consumed.
 function renderChart() {
   const svg = document.getElementById("chart");
   const box = document.getElementById("chartBox");
   const hint = document.getElementById("chartHint");
+  const rangeRow = document.getElementById("rangeRow");
   svg.textContent = "";
   hideTip();
 
-  const data = intervals().filter(iv => !iv.bad);
-  if (data.length < 1) {
+  const all = intervals().filter(iv => !iv.bad);
+  if (all.length < 1) {
     document.getElementById("chartCard").style.display = state.readings.length ? "" : "none";
     svg.setAttribute("height", 0);
+    rangeRow.hidden = true;
     hint.textContent = state.readings.length ? "需要至少兩筆有效紀錄才能畫出趨勢。" : "";
     return;
   }
   document.getElementById("chartCard").style.display = "";
   hint.textContent = "";
+
+  // --- visible window ---
+  const tEnd = all[all.length - 1].t1;
+  rangeRow.hidden = (tEnd - all[0].t0) / DAY <= 32;   // nothing worth narrowing yet
+  const rDays = rangeRow.hidden ? 0 : state.chartRange;
+  const T0 = rDays ? Math.max(tEnd - rDays * DAY, all[0].t0) : all[0].t0;
+  const T1 = tEnd;
+  let data = all.filter(iv => iv.t1 > T0);
+  if (!data.length) data = all.slice(-1);
 
   const cs = getComputedStyle(document.documentElement);
   const C = k => cs.getPropertyValue(k).trim();
@@ -694,6 +718,7 @@ function renderChart() {
   const H = 220;
   const PL = 40, PR = 10, PT = 14, PB = 26;
   const plotW = W - PL - PR, plotH = H - PT - PB;
+  const base = PT + plotH;
   svg.setAttribute("width", W); svg.setAttribute("height", H);
   svg.setAttribute("viewBox", "0 0 " + W + " " + H);
 
@@ -701,6 +726,8 @@ function renderChart() {
   const step = niceStep(maxV, 4);
   const yMax = Math.ceil(maxV / step) * step || step;
   const y = v => PT + plotH - (v / yMax) * plotH;
+  // clamped so an interval that starts before the window still ends flush with the axis
+  const xAt = t => PL + (Math.min(T1, Math.max(T0, t)) - T0) / Math.max(1, T1 - T0) * plotW;
 
   // gridlines + y ticks
   for (let v = 0; v <= yMax + 1e-9; v += step) {
@@ -714,59 +741,63 @@ function renderChart() {
     svg.appendChild(t);
   }
 
-  // Both modes share the same x positions, so toggling only morphs the marks —
-  // nothing shifts sideways and the x labels stay put.
-  const band = plotW / data.length;
-  const cxAt = i => PL + band * (i + .5);
-  // one interval has no trend to draw — a lone dot reads as broken, so fall back to a bar
+  const spans = data.map(d => [xAt(d.t0), xAt(d.t1)]);
+  // one interval has no trend to draw — a lone step reads as broken, so fall back to a bar
   const mode = state.chartMode === "bar" || data.length < 2 ? "bar" : "line";
 
   if (mode === "bar") {
-    // bars: 2px surface gap between neighbours, cap 24px, 4px rounded data-end
-    const bw = Math.max(3, Math.min(24, band - 2));
+    // width carries the duration; 2px surface gap between neighbours, 4px rounded data-end
     data.forEach((d, i) => {
-      const x = cxAt(i) - bw / 2;
+      const [x0, x1] = spans[i];
+      const bw = Math.max(2, x1 - x0 - 2);
+      const x = x0 + (x1 - x0 - bw) / 2;
       const top = y(d.perDay);
-      const h = Math.max(1.5, PT + plotH - top);
+      const h = Math.max(1.5, base - top);
       const r = Math.min(4, bw / 2, h);
       svg.appendChild(el("path", { fill: C("--series-1"), d:
-        "M" + x + "," + (PT + plotH) +
+        "M" + x + "," + base +
         " L" + x + "," + (top + r) +
         " Q" + x + "," + top + " " + (x + r) + "," + top +
         " L" + (x + bw - r) + "," + top +
         " Q" + (x + bw) + "," + top + " " + (x + bw) + "," + (top + r) +
-        " L" + (x + bw) + "," + (PT + plotH) + " Z" }));
+        " L" + (x + bw) + "," + base + " Z" }));
     });
   } else {
-    const pts = data.map((d, i) => [cxAt(i), y(d.perDay)]);
-    const spine = pts.map((p, i) => (i ? "L" : "M") + p[0] + "," + p[1]).join(" ");
-    // area wash under the line, then the 2px line, then the markers on top
+    // A rate holds flat for the whole interval, so the honest line is a step: it makes a
+    // long quiet stretch read as a long flat run, not as one point among many.
+    let spine = "M" + spans[0][0] + "," + y(data[0].perDay);
+    data.forEach((d, i) => {
+      spine += " L" + spans[i][0] + "," + y(d.perDay) + " L" + spans[i][1] + "," + y(d.perDay);
+    });
     svg.appendChild(el("path", { fill: C("--series-1"), "fill-opacity": .10,
-      d: spine + " L" + pts[pts.length - 1][0] + "," + (PT + plotH) +
-         " L" + pts[0][0] + "," + (PT + plotH) + " Z" }));
+      d: spine + " L" + spans[spans.length - 1][1] + "," + base + " L" + spans[0][0] + "," + base + " Z" }));
     svg.appendChild(el("path", { d: spine, fill: "none", stroke: C("--series-1"),
       "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
-    // 2px surface ring keeps markers legible where they crowd together
-    pts.forEach(p => svg.appendChild(el("circle", { cx: p[0], cy: p[1], r: 4,
-      fill: C("--series-1"), stroke: surface, "stroke-width": 2 })));
+    // 2px surface ring keeps the latest marker legible against the line
+    svg.appendChild(el("circle", { cx: Math.min(spans[spans.length - 1][1], W - PR - 1),
+      cy: y(data[data.length - 1].perDay), r: 4,
+      fill: C("--series-1"), stroke: surface, "stroke-width": 2 }));
   }
 
   // crosshair, revealed on hover in line mode
-  const cross = el("line", { y1: PT, y2: PT + plotH, stroke: C("--text-muted"),
+  const cross = el("line", { y1: PT, y2: base, stroke: C("--text-muted"),
     "stroke-width": 1, opacity: 0, id: "crosshair" });
   svg.appendChild(cross);
 
-  // hit targets: one full-height band per point, so the tap area is never mark-sized
-  data.forEach((d, i) => svg.appendChild(el("rect", { x: PL + band * i, y: PT,
-    width: band, height: plotH, fill: "transparent", "data-i": i, style: "cursor:pointer" })));
+  // hit targets: full-height, one per interval, widened so a thin slice stays tappable
+  data.forEach((d, i) => {
+    const w = Math.max(6, spans[i][1] - spans[i][0]);
+    svg.appendChild(el("rect", { x: Math.min(spans[i][0], W - PR - w), y: PT,
+      width: w, height: plotH, fill: "transparent", "data-i": i, style: "cursor:pointer" }));
+  });
 
-  // all-time average reference line — drawn over the bars, its label on a surface patch
-  const avgAll = data.reduce((a, d) => a + d.used, 0) / data.reduce((a, d) => a + d.days, 0);
-  if (data.length >= 3 && avgAll > 0 && avgAll < yMax) {
-    const ay = Math.round(y(avgAll)) + .5;
+  // average reference line — drawn over the marks, its label on a surface patch
+  const avg = data.reduce((a, d) => a + d.used, 0) / data.reduce((a, d) => a + d.days, 0);
+  if (data.length >= 3 && avg > 0 && avg < yMax) {
+    const ay = Math.round(y(avg)) + .5;
     svg.appendChild(el("line", { x1: PL, x2: W - PR, y1: ay, y2: ay,
       stroke: C("--text-muted"), "stroke-width": 1, opacity: .7 }));
-    const label = "全期平均 " + nf(avgAll, 1);
+    const label = (rDays ? "近 " + rDays + " 天平均 " : "全期平均 ") + nf(avg, 1);
     svg.appendChild(el("rect", { x: PL + 1, y: ay - 15, width: label.length * 8, height: 13,
       fill: surface, rx: 3 }));
     const at = el("text", { x: PL + 4, y: ay - 5, "text-anchor": "start",
@@ -775,32 +806,42 @@ function renderChart() {
     svg.appendChild(at);
   }
 
-  // value label on the last point only — clear the marker's ring in line mode
+  // value label on the latest interval only, pinned inside the right edge
   const lastD = data[data.length - 1];
-  const gap = mode === "bar" ? 6 : 11;
-  const lt = el("text", { x: cxAt(data.length - 1), y: Math.max(PT + 9, y(lastD.perDay) - gap),
-    "text-anchor": "middle", fill: C("--text-primary"), "font-size": 11, "font-weight": 640,
+  const lt = el("text", { x: W - PR, y: Math.max(PT + 9, y(lastD.perDay) - (mode === "bar" ? 6 : 11)),
+    "text-anchor": "end", fill: C("--text-primary"), "font-size": 11, "font-weight": 640,
     "font-family": "inherit" });
   lt.textContent = nf(lastD.perDay, 1);
   svg.appendChild(lt);
 
-  // x labels: first, last, and a few evenly spaced
-  const maxLabels = Math.max(2, Math.floor(plotW / 52));
-  const stride = Math.ceil(data.length / maxLabels);
-  data.forEach((d, i) => {
-    if (i !== data.length - 1 && (i % stride !== 0 || (data.length - 1 - i) < stride * .6)) return;
-    const t = el("text", { x: cxAt(i), y: H - 8, "text-anchor": "middle",
-      fill: C("--text-muted"), "font-size": 10, "font-family": "inherit" });
-    t.textContent = d.days < 1 && timeOf(d.d1) ? timeOf(d.d1) : fmtDate(d.d1);
-    svg.appendChild(t);
-  });
+  // x labels on round time positions, walked back from the newest reading
+  const spanDays = (T1 - T0) / DAY;
+  const want = Math.max(2, Math.floor(plotW / 58));
+  const stepD = [1 / 24, 2 / 24, 4 / 24, 8 / 24, .5, 1, 2, 3, 7, 14, 30, 60, 90, 180, 365]
+    .find(s => spanDays / s <= want) || 365;
+  const anchor = new Date(T1);
+  if (stepD >= 1) anchor.setHours(0, 0, 0, 0); else anchor.setMinutes(0, 0, 0);
+  for (let t = anchor.getTime(); t >= T0; t -= stepD * DAY) {
+    const x = xAt(t);
+    if (x < PL + 6) continue;
+    const lab = el("text", { y: H - 8, fill: C("--text-muted"),
+      "font-size": 10, "font-family": "inherit" });
+    lab.textContent = stepD < 1
+      ? String(new Date(t).getHours()).padStart(2, "0") + ":" +
+        String(new Date(t).getMinutes()).padStart(2, "0")
+      : fmtMD(t);
+    // keep the outermost labels from spilling past the plot
+    if (x > W - PR - 16) { lab.setAttribute("x", W - PR); lab.setAttribute("text-anchor", "end"); }
+    else { lab.setAttribute("x", x); lab.setAttribute("text-anchor", "middle"); }
+    svg.appendChild(lab);
+  }
 
   // hover / tap
   svg.onpointermove = ev => {
     const t = ev.target;
     const i = t.getAttribute && t.getAttribute("data-i");
     if (i === null || i === undefined) return;
-    const cx = cxAt(+i);
+    const cx = (spans[+i][0] + spans[+i][1]) / 2;
     if (mode !== "bar") {
       cross.setAttribute("x1", cx); cross.setAttribute("x2", cx);
       cross.setAttribute("opacity", .5);
@@ -1079,7 +1120,7 @@ document.getElementById("inPrice").addEventListener("change", e => {
   else e.target.value = state.price;
 });
 
-document.querySelectorAll(".seg button").forEach(b => {
+document.querySelectorAll("#modeSeg button").forEach(b => {
   b.onclick = () => {
     state.chartMode = b.dataset.mode;
     save();
@@ -1087,9 +1128,19 @@ document.querySelectorAll(".seg button").forEach(b => {
     renderChart();
   };
 });
+document.querySelectorAll("#rangeSeg button").forEach(b => {
+  b.onclick = () => {
+    state.chartRange = Number(b.dataset.range);
+    save();
+    syncSeg();
+    renderChart();
+  };
+});
 function syncSeg() {
-  document.querySelectorAll(".seg button").forEach(b =>
+  document.querySelectorAll("#modeSeg button").forEach(b =>
     b.setAttribute("aria-pressed", String(b.dataset.mode === state.chartMode)));
+  document.querySelectorAll("#rangeSeg button").forEach(b =>
+    b.setAttribute("aria-pressed", String(Number(b.dataset.range) === state.chartRange)));
 }
 syncSeg();
 
