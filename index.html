@@ -387,15 +387,23 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
 
 <!-- BILLS -->
 <section class="card" id="billCard" hidden>
-  <h2>歷史帳單</h2>
-  <div id="billList"></div>
-  <div class="bill-total" id="billTotal"></div>
+  <details class="fold-section" id="billDetails" open>
+    <summary>歷史帳單</summary>
+    <div>
+      <div id="billList"></div>
+      <div class="bill-total" id="billTotal"></div>
+    </div>
+  </details>
 </section>
 
 <!-- RECORDS -->
 <section class="card">
-  <h2>抄表紀錄</h2>
-  <div id="recList"><div class="empty">還沒有任何紀錄。</div></div>
+  <details class="fold-section" id="recDetails">
+    <summary>抄表紀錄</summary>
+    <div>
+      <div id="recList"><div class="empty">還沒有任何紀錄。</div></div>
+    </div>
+  </details>
 </section>
 
 <!-- SETTINGS -->
@@ -437,12 +445,12 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
 <footer>電費追蹤 <span id="footVer"></span> · 資料儲存於本機 · 加入主畫面即可離線使用</footer>
 </div>
 
-<script src="chart-nav.js?v=1.7.2"></script>
+<script src="chart-nav.js?v=1.7.3"></script>
 <script>
 "use strict";
 // Bump this on every release, and keep sw.js's CACHE constant in step —
 // the cache name is what forces phones off the previous build.
-const VERSION = "1.7.2";
+const VERSION = "1.7.3";
 const KEY = "powerTracker.v1";
 const DAY = 86400000;
 
