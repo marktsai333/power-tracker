@@ -437,12 +437,12 @@ footer { text-align: center; font-size: 11px; color: var(--text-muted); padding:
 <footer>電費追蹤 <span id="footVer"></span> · 資料儲存於本機 · 加入主畫面即可離線使用</footer>
 </div>
 
-<script src="chart-nav.js?v=1.7.1"></script>
+<script src="chart-nav.js?v=1.7.2"></script>
 <script>
 "use strict";
 // Bump this on every release, and keep sw.js's CACHE constant in step —
 // the cache name is what forces phones off the previous build.
-const VERSION = "1.7.1";
+const VERSION = "1.7.2";
 const KEY = "powerTracker.v1";
 const DAY = 86400000;
 
@@ -551,7 +551,8 @@ function cycleOf(t) {
   return { start, end: boundary(s.getFullYear(), s.getMonth() + 1) };
 }
 
-/** Every cycle touched by the data, oldest first. `complete` = fully covered by readings. */
+/** Every cycle touched by the data, oldest first. The first cycle starts at the
+    initial reading; later cycles run settlement-day to settlement-day. */
 function cycles() {
   const r = sorted();
   const ivs = intervals().filter(iv => !iv.bad);
@@ -559,14 +560,15 @@ function cycles() {
   const dataStart = ts(r[0].d), dataEnd = ts(r[r.length - 1].d);
 
   const out = [];
-  let c = cycleOf(dataStart);
+  // The first meter reading is the move-in baseline, so the first bill runs from
+  // that reading to the next settlement boundary. This avoids requiring a made-up
+  // reading at the previous month's settlement day.
+  let c = { start: dataStart, end: cycleOf(dataStart).end };
   while (c.start < dataEnd) {
     const u = windowUsage(ivs, c.start, Math.min(c.end, dataEnd));
     if (u.days > 0.5) out.push({
       start: c.start, end: c.end, kwh: u.kwh, days: u.days,
-      // Only a real bill if readings span the whole cycle. Data starting mid-cycle
-      // would otherwise show a fraction of the period as if it were the full bill.
-      cost: u.kwh * state.price, complete: dataStart <= c.start && dataEnd >= c.end
+      cost: u.kwh * state.price, complete: dataEnd >= c.end
     });
     c = cycleOf(c.end);
   }
@@ -625,7 +627,8 @@ function renderSummary() {
   // to the settlement date is projected at the recent rate, so a stale reading
   // widens the projected part instead of silently under-reporting.
   const now = ts(todayISO());
-  const cyc = cycleOf(now);
+  const firstCycle = { start: ts(r[0].d), end: cycleOf(ts(r[0].d)).end };
+  const cyc = now < firstCycle.end ? firstCycle : cycleOf(now);
   const measured = windowUsage(usable, cyc.start, Math.min(end, cyc.end));
   const projectFrom = Math.max(cyc.start, Math.min(end, cyc.end));
   const projDays = Math.max(0, (cyc.end - projectFrom) / DAY);
